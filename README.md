@@ -1,2 +1,2 @@
-# METAR-
-This is a app that tells you about the airports weather via its METAR. This was built by 2 aspiring high schoolers. 
+# FlightWeather
+This is an app that tells you about airport weather via METAR. It is built for flightweather.org and designed to run as a hosted weather lookup service.

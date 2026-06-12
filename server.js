@@ -1,10 +1,13 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 
-const PORT = process.env.PORT || 4173;
+const PORT = process.env.PORT || 7777;
 const AIRPORTS_CSV = "https://davidmegginson.github.io/ourairports-data/airports.csv";
 const METAR_API = "https://aviationweather.gov/api/data/metar";
+const TILE_SERVER = "https://tile.openstreetmap.org";
+const MAX_TILE_ZOOM = 19;
 
 let airportCache = null;
 
@@ -138,6 +141,45 @@ const server = http.createServer(async (req, res) => {
       send(res, 500, JSON.stringify({ error: err.message }), "application/json; charset=utf-8");
     }
     return;
+  }
+
+  if (url.pathname.startsWith("/tiles/")) {
+    const [, , z, x, file] = url.pathname.split("/");
+    const y = file.replace(".png", "");
+    const zNum = Number(z);
+    const xNum = Number(x);
+    const yNum = Number(y);
+
+    if (
+      Number.isInteger(zNum) && Number.isInteger(xNum) && Number.isInteger(yNum) &&
+      zNum >= 0 && zNum <= MAX_TILE_ZOOM &&
+      xNum >= 0 && yNum >= 0
+    ) {
+      const tileUrl = `${TILE_SERVER}/${z}/${x}/${y}.png`;
+      try {
+        const response = await fetch(tileUrl, {
+          headers: {
+            Referer: `http://localhost:${PORT}`
+          }
+        });
+
+        if (!response.ok) {
+          send(res, 502, "Unable to load tile");
+          return;
+        }
+
+        res.writeHead(200, {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=3600"
+        });
+
+        const body = await response.arrayBuffer();
+        res.end(Buffer.from(body));
+      } catch (err) {
+        send(res, 502, "Tile proxy error");
+      }
+      return;
+    }
   }
 
   send(res, 404, "Not found");

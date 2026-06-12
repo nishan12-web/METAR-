@@ -1,5 +1,5 @@
 {
-  "name": "metar-airport-map",
+  "name": "flightweather",
   "version": "1.0.0",
   "private": true,
   "scripts": {

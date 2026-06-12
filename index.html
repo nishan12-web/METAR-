@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>METAR Airport Map</title>
+  <title>FlightWeather</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     * {
@@ -157,8 +157,8 @@
 <body>
   <main class="app">
     <section class="side">
-      <h1>METAR Map</h1>
-      <p>Enter an ICAO code. The app shows the airport on a real map and loads raw plus decoded METAR.</p>
+      <h1>FlightWeather</h1>
+      <p>Enter an ICAO code. FlightWeather shows the airport on a real map and loads raw plus decoded METAR data.</p>
 
       <form id="form">
         <input id="icao" maxlength="4" placeholder="KIAH" autocomplete="off">
@@ -225,7 +225,7 @@
 
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
@@ -281,13 +281,35 @@
       btn.disabled = false;
     }
 
+    const isFileProtocol = window.location.protocol === "file:";
+
+    function showServeError() {
+      error.textContent = "Start the app with \"npm start\" and open it through the local server instead of using index.html directly.";
+      rawMetar.textContent = "Run the local server to use the METAR lookup.";
+      decodedMetar.textContent = "Run the local server to use the METAR lookup.";
+      mapAirport.textContent = "Server required";
+      mapText.textContent = "Open the app from the local server, not from the file system.";
+      airportCard.hidden = true;
+      btn.disabled = true;
+      input.disabled = true;
+    }
+
+    if (isFileProtocol) {
+      showServeError();
+    }
+
     input.addEventListener("input", () => {
       input.value = clean(input.value);
-      if (input.value.length === 4) searchAirport(input.value);
+      if (!isFileProtocol && input.value.length === 4) searchAirport(input.value);
     });
 
     form.addEventListener("submit", event => {
       event.preventDefault();
+      if (isFileProtocol) {
+        showServeError();
+        return;
+      }
+
       const icao = clean(input.value);
       if (icao.length !== 4) {
         error.textContent = "Enter a 4-letter ICAO code like KIAH.";
