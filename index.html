@@ -143,6 +143,96 @@
       font-weight: 800;
     }
 
+    .metar-summary {
+      display: grid;
+      gap: 12px;
+    }
+
+    .flight-category {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-weight: 800;
+      font-size: 14px;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .flight-category.vfr {
+      background: #00cc00;
+      color: white;
+    }
+
+    .flight-category.mvfr {
+      background: #0066ff;
+      color: white;
+    }
+
+    .flight-category.ifvr {
+      background: #ff0000;
+      color: white;
+    }
+
+    .flight-category.lifr {
+      background: #ff00ff;
+      color: white;
+    }
+
+    .metar-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metar-item {
+      background: white;
+      border: 1px solid #dfe8ed;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .metar-item label {
+      color: #60707c;
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .metar-item .value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #17212b;
+    }
+
+    .metar-item .units {
+      font-size: 12px;
+      color: #60707c;
+      margin-left: 4px;
+    }
+
+    .metar-full-row {
+      grid-column: 1 / -1;
+    }
+
+    .toggle-metar {
+      background: #146c94;
+      border: 0;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-weight: 800;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    .toggle-metar:hover {
+      background: #0f4f6c;
+    }
+
     @media (max-width: 850px) {
       .app {
         grid-template-columns: 1fr;
@@ -178,12 +268,47 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="metarSummaryCard" hidden>
+        <h3>METAR Summary</h3>
+        <div class="metar-summary">
+          <div class="flight-category" id="flightCategory"></div>
+          <div class="metar-grid">
+            <div class="metar-item">
+              <label>Temperature</label>
+              <div class="value"><span id="temp">--</span><span class="units">°C</span></div>
+            </div>
+            <div class="metar-item">
+              <label>Dew Point</label>
+              <div class="value"><span id="dewpoint">--</span><span class="units">°C</span></div>
+            </div>
+            <div class="metar-item">
+              <label>Wind</label>
+              <div class="value"><span id="wind">--</span></div>
+            </div>
+            <div class="metar-item">
+              <label>Visibility</label>
+              <div class="value"><span id="visibility">--</span></div>
+            </div>
+            <div class="metar-item">
+              <label>Ceiling</label>
+              <div class="value"><span id="ceiling">--</span></div>
+            </div>
+            <div class="metar-item">
+              <label>Altimeter</label>
+              <div class="value"><span id="altimeter">--</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <button class="toggle-metar" id="toggleMetarBtn">View Full METAR</button>
+
+      <section class="card" id="rawMetarCard" hidden>
         <h3>Raw METAR</h3>
         <pre id="rawMetar">Search an airport.</pre>
       </section>
 
-      <section class="card">
+      <section class="card" id="decodedMetarCard" hidden>
         <h3>Decoded METAR</h3>
         <pre id="decodedMetar">Search an airport.</pre>
       </section>
@@ -215,9 +340,19 @@
     const decodedMetar = document.querySelector("#decodedMetar");
     const mapAirport = document.querySelector("#mapAirport");
     const mapText = document.querySelector("#mapText");
+    const metarSummaryCard = document.querySelector("#metarSummaryCard");
+    const flightCategory = document.querySelector("#flightCategory");
+    const temp = document.querySelector("#temp");
+    const dewpoint = document.querySelector("#dewpoint");
+    const wind = document.querySelector("#wind");
+    const visibility = document.querySelector("#visibility");
+    const ceiling = document.querySelector("#ceiling");
+    const altimeter = document.querySelector("#altimeter");
+    const toggleMetarBtn = document.querySelector("#toggleMetarBtn");
 
     let map;
     let marker;
+    let showingSummary = true;
 
     function clean(value) {
       return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
@@ -253,7 +388,106 @@
       mapText.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
     }
 
-    async function searchAirport(icao) {
+    function determineFlightCategory(ceiling, visibility) {
+      // VFR: ceiling >= 3000 ft, visibility >= 5 sm
+      // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
+      // IFVR: ceiling 500-999 ft, visibility 1-2 sm
+      // LIFR: ceiling < 500 ft, visibility < 1 sm
+      const vis = visibility || 10;
+      const cig = ceiling || 5000;
+      
+      if (cig >= 3000 && vis >= 5) return { category: "VFR", class: "vfr", color: "#00cc00" };
+      if (cig >= 1000 && vis >= 3) return { category: "MVFR", class: "mvfr", color: "#0066ff" };
+      if (cig >= 500 && vis >= 1) return { category: "IFVR", class: "ifvr", color: "#ff0000" };
+      return { category: "LIFR", class: "lifr", color: "#ff00ff" };
+    }
+
+    function parseMetarData(decodedText) {
+      const data = {
+        temp: "--",
+        dewpoint: "--",
+        wind: "--",
+        visibility: "--",
+        ceiling: "--",
+        altimeter: "--"
+      };
+
+      if (!decodedText) return data;
+
+      // Parse Temperature and Dewpoint
+      const tempMatch = decodedText.match(/Temperature: ([-\d.]+)°C.*Dewpoint: ([-\d.]+)°C/);
+      if (tempMatch) {
+        data.temp = tempMatch[1];
+        data.dewpoint = tempMatch[2];
+      }
+
+      // Parse Wind
+      const windMatch = decodedText.match(/Wind: (.*?)(?:Visibility|Altimeter|Ceiling|$)/);
+      if (windMatch) {
+        let windStr = windMatch[1].trim();
+        // Simplify wind info to just speed and direction
+        const speedMatch = windStr.match(/(\d+)\s*kt/);
+        const dirMatch = windStr.match(/from\s*([A-Z]+|\d+)°?/);
+        if (speedMatch && dirMatch) {
+          data.wind = `${dirMatch[1]} @ ${speedMatch[1]} kt`;
+        } else if (speedMatch) {
+          data.wind = `${speedMatch[1]} kt`;
+        } else {
+          data.wind = windStr.substring(0, 30);
+        }
+      }
+
+      // Parse Visibility
+      const visMatch = decodedText.match(/Visibility: ([\d.]+)\s*(?:miles|km|SM)/);
+      if (visMatch) {
+        data.visibility = visMatch[1] + " SM";
+      }
+
+      // Parse Ceiling (first cloud layer that's broken or overcast)
+      const ceilingMatch = decodedText.match(/ceiling\s+(\d+)\s*ft/i);
+      if (ceilingMatch) {
+        data.ceiling = ceilingMatch[1] + " ft";
+      } else {
+        // Try to find first significant cloud layer
+        const cloudMatch = decodedText.match(/(?:OVC|BKN)\s+(\d+)/);
+        if (cloudMatch) {
+          data.ceiling = cloudMatch[1] + " ft";
+        }
+      }
+
+      // Parse Altimeter
+      const altMatch = decodedText.match(/Altimeter:\s*([\d.]+)\s*(?:inHg|in)/);
+      if (altMatch) {
+        data.altimeter = altMatch[1] + " inHg";
+      }
+
+      return data;
+    }
+
+    function showMetarSummary(decodedText) {
+      const metarData = parseMetarData(decodedText);
+      
+      // Update display values
+      temp.textContent = metarData.temp;
+      dewpoint.textContent = metarData.dewpoint;
+      wind.textContent = metarData.wind;
+      visibility.textContent = metarData.visibility;
+      ceiling.textContent = metarData.ceiling;
+      altimeter.textContent = metarData.altimeter;
+
+      // Determine flight category
+      const ceilingNum = parseInt(metarData.ceiling) || 5000;
+      const visNum = parseFloat(metarData.visibility) || 10;
+      const category = determineFlightCategory(ceilingNum, visNum);
+
+      flightCategory.textContent = category.category;
+      flightCategory.className = "flight-category " + category.class;
+
+      metarSummaryCard.hidden = false;
+      showingSummary = true;
+      toggleMetarBtn.textContent = "View Full METAR";
+    }
+
       btn.disabled = true;
       error.textContent = "";
       rawMetar.textContent = "Loading raw METAR...";
@@ -273,13 +507,14 @@
         const metarData = await metarRes.json();
         rawMetar.textContent = metarData.raw || "No raw METAR found.";
         decodedMetar.textContent = metarData.decoded || "No decoded METAR found.";
+        showMetarSummary(metarData.decoded || "");
       } catch {
         rawMetar.textContent = "Could not load raw METAR.";
         decodedMetar.textContent = "Could not load decoded METAR.";
+        metarSummaryCard.hidden = true;
       }
 
       btn.disabled = false;
-    }
 
     const isFileProtocol = window.location.protocol === "file:";
 
@@ -316,6 +551,22 @@
         return;
       }
       searchAirport(icao);
+    });
+
+    toggleMetarBtn.addEventListener("click", () => {
+      if (showingSummary) {
+        metarSummaryCard.hidden = true;
+        document.getElementById("rawMetarCard").hidden = false;
+        document.getElementById("decodedMetarCard").hidden = false;
+        toggleMetarBtn.textContent = "View Summary";
+        showingSummary = false;
+      } else {
+        metarSummaryCard.hidden = false;
+        document.getElementById("rawMetarCard").hidden = true;
+        document.getElementById("decodedMetarCard").hidden = true;
+        toggleMetarBtn.textContent = "View Full METAR";
+        showingSummary = true;
+      }
     });
 
     initMap();
