@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>METAR Airport Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #edf4f7;
+      color: #17212b;
+      font-family: Arial, sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      min-height: 100vh;
+    }
+
+    .side {
+      background: #ffffff;
+      border-right: 1px solid #d8e0e7;
+      overflow: auto;
+      padding: 22px;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin: 0 0 8px;
+    }
+
+    p {
+      color: #60707c;
+      line-height: 1.4;
+    }
+
+    form {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      margin: 20px 0;
+    }
+
+    input {
+      border: 1px solid #b8c8d2;
+      border-radius: 8px;
+      font-size: 28px;
+      font-weight: 800;
+      padding: 12px;
+      text-transform: uppercase;
+      width: 100%;
+    }
+
+    button {
+      background: #146c94;
+      border: 0;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-weight: 800;
+      padding: 0 18px;
+    }
+
+    button:hover {
+      background: #0f4f6c;
+    }
+
+    button:disabled {
+      background: #8fa3af;
+      cursor: wait;
+    }
+
+    .card {
+      background: #f8fbfc;
+      border: 1px solid #d8e0e7;
+      border-radius: 8px;
+      margin-top: 14px;
+      padding: 14px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .box {
+      background: white;
+      border: 1px solid #dfe8ed;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .box span {
+      color: #60707c;
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    pre {
+      background: #202c35;
+      border-radius: 8px;
+      color: #eaf2f6;
+      font-size: 13px;
+      line-height: 1.45;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .map-wrap {
+      position: relative;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    .map-title {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+      left: 18px;
+      max-width: 360px;
+      padding: 12px 14px;
+      position: absolute;
+      top: 18px;
+      z-index: 500;
+    }
+
+    .error {
+      color: #b33a35;
+      font-weight: 800;
+    }
+
+    @media (max-width: 850px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      #map {
+        height: 520px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="side">
+      <h1>METAR Map</h1>
+      <p>Enter an ICAO code. The app shows the airport on a real map and loads raw plus decoded METAR.</p>
+
+      <form id="form">
+        <input id="icao" maxlength="4" placeholder="KIAH" autocomplete="off">
+        <button id="btn">Search</button>
+      </form>
+
+      <p class="error" id="error"></p>
+
+      <section class="card" id="airportCard" hidden>
+        <h2 id="airportName"></h2>
+        <p id="airportPlace"></p>
+        <div class="grid">
+          <div class="box"><span>ICAO</span><strong id="icaoOut"></strong></div>
+          <div class="box"><span>IATA</span><strong id="iataOut"></strong></div>
+          <div class="box"><span>Country</span><strong id="countryOut"></strong></div>
+          <div class="box"><span>Coordinates</span><strong id="coordsOut"></strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Raw METAR</h3>
+        <pre id="rawMetar">Search an airport.</pre>
+      </section>
+
+      <section class="card">
+        <h3>Decoded METAR</h3>
+        <pre id="decodedMetar">Search an airport.</pre>
+      </section>
+    </section>
+
+    <section class="map-wrap">
+      <div class="map-title">
+        <strong id="mapAirport">World Map</strong>
+        <p id="mapText">Search an ICAO code to move the map.</p>
+      </div>
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const form = document.querySelector("#form");
+    const input = document.querySelector("#icao");
+    const btn = document.querySelector("#btn");
+    const error = document.querySelector("#error");
+    const airportCard = document.querySelector("#airportCard");
+    const airportName = document.querySelector("#airportName");
+    const airportPlace = document.querySelector("#airportPlace");
+    const icaoOut = document.querySelector("#icaoOut");
+    const iataOut = document.querySelector("#iataOut");
+    const countryOut = document.querySelector("#countryOut");
+    const coordsOut = document.querySelector("#coordsOut");
+    const rawMetar = document.querySelector("#rawMetar");
+    const decodedMetar = document.querySelector("#decodedMetar");
+    const mapAirport = document.querySelector("#mapAirport");
+    const mapText = document.querySelector("#mapText");
+
+    let map;
+    let marker;
+
+    function clean(value) {
+      return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+    }
+
+    function initMap() {
+      map = L.map("map").setView([20, 0], 2);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+      marker = L.marker([20, 0]).addTo(map);
+    }
+
+    function showAirport(airport) {
+      airportCard.hidden = false;
+      airportName.textContent = airport.name;
+      airportPlace.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
+      icaoOut.textContent = airport.icao;
+      iataOut.textContent = airport.iata || "--";
+      countryOut.textContent = airport.country || "--";
+      coordsOut.textContent = airport.lat + ", " + airport.lon;
+
+      const lat = Number(airport.lat);
+      const lon = Number(airport.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        marker.setLatLng([lat, lon]);
+        marker.bindPopup("<b>" + airport.icao + "</b><br>" + airport.name).openPopup();
+        map.flyTo([lat, lon], 10);
+      }
+
+      mapAirport.textContent = airport.icao + " - " + airport.name;
+      mapText.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
+    }
+
+    async function searchAirport(icao) {
+      btn.disabled = true;
+      error.textContent = "";
+      rawMetar.textContent = "Loading raw METAR...";
+      decodedMetar.textContent = "Loading decoded METAR...";
+
+      try {
+        const airportRes = await fetch("/api/airport/" + encodeURIComponent(icao));
+        const airportData = await airportRes.json();
+        if (!airportRes.ok) throw new Error(airportData.error || "Airport not found.");
+        showAirport(airportData.airport);
+      } catch (err) {
+        error.textContent = err.message;
+      }
+
+      try {
+        const metarRes = await fetch("/api/metar/" + encodeURIComponent(icao));
+        const metarData = await metarRes.json();
+        rawMetar.textContent = metarData.raw || "No raw METAR found.";
+        decodedMetar.textContent = metarData.decoded || "No decoded METAR found.";
+      } catch {
+        rawMetar.textContent = "Could not load raw METAR.";
+        decodedMetar.textContent = "Could not load decoded METAR.";
+      }
+
+      btn.disabled = false;
+    }
+
+    input.addEventListener("input", () => {
+      input.value = clean(input.value);
+      if (input.value.length === 4) searchAirport(input.value);
+    });
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const icao = clean(input.value);
+      if (icao.length !== 4) {
+        error.textContent = "Enter a 4-letter ICAO code like KIAH.";
+        return;
+      }
+      searchAirport(icao);
+    });
+
+    initMap();
+  </script>
+</body>
+</html>
