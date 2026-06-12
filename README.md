@@ -1,2 +1,2 @@
 # METAR-
-This is a app that tell you about the airports weather and its Metar/ This was built by 2 Aspiring highschoolers. 
+This is a app that tells you about the airports weather via its METAR. This was built by 2 aspiring high schoolers. 
