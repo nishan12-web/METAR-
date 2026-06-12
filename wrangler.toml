@@ -1,0 +1,9 @@
+name = "flightweather"
+main = "src/worker.js"
+account_id = "e5d94d750c48ddbffd765ba79779f942"
+compatibility_date = "2024-12-16"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
