@@ -75,10 +75,10 @@ async function getAirport(icao) {
 async function getMetar(icao) {
   const url = `${METAR_API}?ids=${encodeURIComponent(icao)}&format=decoded`;
   const response = await fetch(url);
-  const decoded = await response.text();
-
+  
   if (!response.ok) throw new Error("Could not load METAR.");
 
+  const decoded = await response.text();
   const rawMatch = decoded.match(/Text:\s*(.+)/);
   return {
     raw: rawMatch ? rawMatch[1].trim() : decoded.trim(),
@@ -89,93 +89,132 @@ async function getMetar(icao) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-
-    // Serve static files from the public directory
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      const response = await env.ASSETS.fetch(request);
-      return response;
-    }
+    const pathname = url.pathname;
 
     // API: Get airport info
-    if (url.pathname.startsWith("/api/airport/")) {
-      const icao = cleanIcao(url.pathname.split("/").pop());
+    if (pathname.startsWith("/api/airport/")) {
+      const icao = cleanIcao(pathname.split("/").pop());
 
       try {
         const airport = await getAirport(icao);
         if (!airport) {
           return new Response(JSON.stringify({ error: `No airport found for ${icao}` }), {
             status: 404,
-            headers: { "Content-Type": "application/json; charset=utf-8" }
+            headers: { 
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*"
+            }
           });
         }
         return new Response(JSON.stringify({ airport }), {
           status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8" }
+          headers: { 
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
         });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
-          headers: { "Content-Type": "application/json; charset=utf-8" }
+          headers: { 
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
         });
       }
     }
 
     // API: Get METAR data
-    if (url.pathname.startsWith("/api/metar/")) {
-      const icao = cleanIcao(url.pathname.split("/").pop());
+    if (pathname.startsWith("/api/metar/")) {
+      const icao = cleanIcao(pathname.split("/").pop());
 
       try {
         const metar = await getMetar(icao);
         return new Response(JSON.stringify(metar), {
           status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8" }
+          headers: { 
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
         });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
-          headers: { "Content-Type": "application/json; charset=utf-8" }
+          headers: { 
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
         });
       }
     }
 
     // Proxy tiles
-    if (url.pathname.startsWith("/tiles/")) {
-      const [, , z, x, file] = url.pathname.split("/");
-      const y = file.replace(".png", "");
-      const zNum = Number(z);
-      const xNum = Number(x);
-      const yNum = Number(y);
+    if (pathname.startsWith("/tiles/")) {
+      const parts = pathname.split("/");
+      const z = parts[2];
+      const x = parts[3];
+      const file = parts[4];
+      
+      if (file && file.endsWith(".png")) {
+        const y = file.replace(".png", "");
+        const zNum = Number(z);
+        const xNum = Number(x);
+        const yNum = Number(y);
 
-      if (
-        Number.isInteger(zNum) && Number.isInteger(xNum) && Number.isInteger(yNum) &&
-        zNum >= 0 && zNum <= MAX_TILE_ZOOM &&
-        xNum >= 0 && yNum >= 0
-      ) {
-        const tileUrl = `${TILE_SERVER}/${z}/${x}/${y}.png`;
-        try {
-          const response = await fetch(tileUrl, {
-            headers: {
-              "User-Agent": "flightweather"
+        if (
+          Number.isInteger(zNum) && Number.isInteger(xNum) && Number.isInteger(yNum) &&
+          zNum >= 0 && zNum <= MAX_TILE_ZOOM &&
+          xNum >= 0 && yNum >= 0
+        ) {
+          const tileUrl = `${TILE_SERVER}/${z}/${x}/${y}.png`;
+          try {
+            const response = await fetch(tileUrl, {
+              headers: {
+                "User-Agent": "flightweather"
+              }
+            });
+
+            if (!response.ok) {
+              return new Response("Unable to load tile", { status: 502 });
             }
-          });
 
-          if (!response.ok) {
-            return new Response("Unable to load tile", { status: 502 });
+            return new Response(response.body, {
+              status: 200,
+              headers: {
+                "Content-Type": "image/png",
+                "Cache-Control": "public, max-age=3600"
+              }
+            });
+          } catch (err) {
+            return new Response("Tile proxy error", { status: 502 });
           }
-
-          return new Response(response.body, {
-            status: 200,
-            headers: {
-              "Content-Type": "image/png",
-              "Cache-Control": "public, max-age=3600"
-            }
-          });
-        } catch (err) {
-          return new Response("Tile proxy error", { status: 502 });
         }
       }
     }
 
-    return new Response("Not found", { status: 404 });
+    // Serve static files from assets - be explicit about file types
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(pathname);
+    if (pathname === "/" || pathname === "/index.html" || hasExtension) {
+      try {
+        return await env.ASSETS.fetch(request);
+      } catch (err) {
+        // If assets fail, serve index for root
+        if (pathname === "/" || pathname === "/index.html") {
+          try {
+            return await env.ASSETS.fetch(new Request(new URL("/index.html", request.url).toString()));
+          } catch (e) {
+            return new Response("Not found", { status: 404 });
+          }
+        }
+        return new Response("Not found", { status: 404 });
+      }
+    }
+
+    // Default to index.html for SPA routing
+    try {
+      return await env.ASSETS.fetch(new Request(new URL("/index.html", request.url).toString()));
+    } catch (err) {
+      return new Response("Not found", { status: 404 });
+    }
   }
 };
