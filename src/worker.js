@@ -1,8 +1,6 @@
 const AIRPORTS_CSV = "https://davidmegginson.github.io/ourairports-data/airports.csv";
 const METAR_API = "https://aviationweather.gov/api/data/metar";
-const AVIATION_EDGE_API = "https://aviation-edge.com/v2/public/timetable";
-const ADSB_LOL_API = "https://api.adsb.lol/v2/lat";
-const ADSBDB_API = "https://api.adsbdb.com/v0/callsign";
+const OPENSKY_API = "https://opensky-network.org/api/flights";
 const TILE_SERVER = "https://tile.openstreetmap.org";
 const MAX_TILE_ZOOM = 19;
 
@@ -141,67 +139,44 @@ async function getMetar(icao) {
   };
 }
 
-async function getFreeTraffic(airport, type) {
-  const scheduleUrl = new URL(`${ADSB_LOL_API}/${airport.lat}/lon/${airport.lon}/dist/50`);
+async function getSchedule(airport, type) {
+  const end = Math.floor(Date.now() / 1000);
+  const begin = end - 2 * 60 * 60;
+  const scheduleUrl = new URL(`${OPENSKY_API}/${type}`);
+  scheduleUrl.searchParams.set("airport", airport.icao);
+  scheduleUrl.searchParams.set("begin", begin);
+  scheduleUrl.searchParams.set("end", end);
+
   const response = await fetch(scheduleUrl);
-  if (!response.ok) throw new Error("Could not load free live flight movements.");
-  const data = await response.json();
-  const flights = (data.ac || []).filter(flight => {
-    const climbRate = Number(flight.baro_rate || 0);
-    return type === "arrival" ? climbRate <= -100 : climbRate >= 100;
-  });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error("Could not load OpenSky flight movements.");
 
-  return Promise.all(flights.slice(0, 30).map(async flight => {
-    const callsign = flight.flight?.trim() || flight.icao24 || "Unknown flight";
-    let route = null;
+  const flights = await response.json();
+  const airports = await loadAirports();
+  return (Array.isArray(flights) ? flights : []).map(flight => {
+    const departure = airports.get(flight.estDepartureAirport) || {};
+    const arrival = airports.get(flight.estArrivalAirport) || {};
+    const callsign = flight.callsign?.trim() || flight.icao24 || "Unknown flight";
+    const observedAt = new Date((type === "arrival" ? flight.lastSeen : flight.firstSeen) * 1000).toISOString();
 
-    if (callsign !== "Unknown flight") {
-      try {
-        const routeResponse = await fetch(`${ADSBDB_API}/${encodeURIComponent(callsign)}`);
-        if (routeResponse.ok) route = (await routeResponse.json()).response?.flightroute || null;
-      } catch {
-        route = null;
-      }
-    }
-
-    const observedAt = new Date(Date.now() - Number(flight.seen_pos || flight.seen || 0) * 1000).toISOString();
     return {
-      flight: { iataNumber: route?.callsign_iata || callsign, icaoNumber: route?.callsign_icao || callsign },
-      airline: route?.airline || { name: "Airline unavailable" },
+      flight: { iataNumber: callsign, icaoNumber: callsign },
+      airline: { name: callsign === "Unknown flight" ? "Airline unavailable" : callsign.slice(0, 3) },
       departure: {
-        iataCode: route?.origin?.iata_code || "Unknown",
-        icaoCode: route?.origin?.icao_code || "",
+        iataCode: departure.iata || flight.estDepartureAirport || (type === "departure" ? airport.iata : "Unknown"),
+        icaoCode: flight.estDepartureAirport || "",
         scheduledTime: null
       },
       arrival: {
-        iataCode: route?.destination?.iata_code || airport.iata || airport.icao,
-        icaoCode: route?.destination?.icao_code || airport.icao,
+        iataCode: arrival.iata || flight.estArrivalAirport || (type === "arrival" ? airport.iata : "Unknown"),
+        icaoCode: flight.estArrivalAirport || "",
         scheduledTime: null
       },
-      status: type === "arrival" ? "descending · live" : "climbing · live",
+      status: type === "arrival" ? "recent arrival · OpenSky" : "recent departure · OpenSky",
       observedAt,
-      liveSource: "ADSB.lol + ADSBdb"
+      liveSource: "OpenSky Network"
     };
-  }));
-}
-
-async function getSchedule(airport, type, apiKey) {
-  if (apiKey && airport.iata && airport.iata !== "--") {
-    const scheduleUrl = new URL(AVIATION_EDGE_API);
-    scheduleUrl.searchParams.set("key", apiKey);
-    scheduleUrl.searchParams.set("iataCode", airport.iata);
-    scheduleUrl.searchParams.set("type", type);
-
-    try {
-      const response = await fetch(scheduleUrl);
-      const data = await response.json();
-      if (response.ok && Array.isArray(data)) return data;
-    } catch {
-      // Use the free provider below when Aviation Edge is unavailable.
-    }
-  }
-
-  return getFreeTraffic(airport, type);
+  }).slice(0, 40);
 }
 
 export default {
@@ -307,7 +282,7 @@ export default {
             headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
           });
         }
-        const flights = await getSchedule(airport, type, env.AVIATION_EDGE_API_KEY);
+        const flights = await getSchedule(airport, type);
         return new Response(JSON.stringify({ flights }), {
           status: 200,
           headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }

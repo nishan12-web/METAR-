@@ -422,7 +422,7 @@
         <div class="schedule-header">
           <div>
             <h3>Airport Schedule</h3>
-            <p id="scheduleSubtitle">Live timetable</p>
+            <p id="scheduleSubtitle">Recent OpenSky movements</p>
           </div>
         </div>
         <div class="schedule-tabs" role="tablist" aria-label="Airport schedule">
@@ -483,7 +483,7 @@
       <footer class="credits">
         <h3>FlightWeather credits</h3>
         <p>Founded by <strong>Nishan.B</strong> and <strong>Joel.B</strong>.</p>
-        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://aviation-edge.com/" target="_blank" rel="noreferrer">Aviation Edge</a>, <a href="https://adsb.lol/" target="_blank" rel="noreferrer">ADSB.lol</a>, <a href="https://www.adsbdb.com/" target="_blank" rel="noreferrer">ADSBdb</a>, and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
+        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://opensky-network.org/" target="_blank" rel="noreferrer">The OpenSky Network</a>, and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
         <p>Interface: <a href="https://leafletjs.com/" target="_blank" rel="noreferrer">Leaflet</a>.</p>
         <p>Map: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Map tiles © OpenStreetMap Foundation.</p>
       </footer>
@@ -611,9 +611,7 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load schedule.");
         const isLive = data.flights.some(flight => flight.liveSource);
-        scheduleSubtitle.textContent = isLive
-          ? `${data.flights.length} live movements · no published times`
-          : `${data.flights.length} ${type}s · live timetable`;
+        scheduleSubtitle.textContent = `${data.flights.length} recent ${type}s · OpenSky Network`;
         renderSchedule(data.flights, type);
       } catch (err) {
         scheduleList.innerHTML = `<p class="schedule-message">${err.message}</p>`;
@@ -815,7 +813,9 @@
         showAirport(airportData.airport);
         scheduleIcao = airportData.airport.icao;
         scheduleCard.hidden = false;
-        scheduleSubtitle.textContent = airportData.airport.iata === "--" ? "Free recent flight movements" : `Live timetable for ${airportData.airport.iata}`;
+        scheduleSubtitle.textContent = airportData.airport.iata === "--"
+          ? "Recent OpenSky movements"
+          : `Recent OpenSky movements for ${airportData.airport.iata}`;
         loadSchedule("schedule");
       } catch (err) {
         error.textContent = err.message;
