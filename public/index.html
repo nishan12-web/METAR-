@@ -585,7 +585,12 @@
         const flightTime = document.createElement("div");
         flightTime.className = "flight-meta";
         flightTime.textContent = time ? `Scheduled ${formatScheduleTime(time)}` : `Observed ${formatScheduleTime(flight.observedAt)}`;
-        details.append(number, route, flightTime);
+        const aircraft = document.createElement("div");
+        aircraft.className = "flight-meta";
+        const registration = flight.aircraft?.registration || "Registration unavailable";
+        const model = flight.aircraft?.model ? ` · ${flight.aircraft.model}` : "";
+        aircraft.textContent = `Aircraft: ${registration}${model}`;
+        details.append(number, route, flightTime, aircraft);
         const statusBadge = document.createElement("span");
         statusBadge.className = "flight-status";
         statusBadge.textContent = status;
