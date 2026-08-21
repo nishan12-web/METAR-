@@ -45,6 +45,7 @@
       gap: 10px;
       grid-template-columns: 1fr auto;
       margin: 20px 0;
+      position: relative;
     }
 
     input {
@@ -55,6 +56,50 @@
       padding: 12px;
       text-transform: uppercase;
       width: 100%;
+    }
+
+    .suggestions {
+      background: white;
+      border: 1px solid #b8c8d2;
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(23, 33, 43, 0.14);
+      display: none;
+      left: 0;
+      list-style: none;
+      margin: 0;
+      max-height: 330px;
+      overflow-y: auto;
+      padding: 6px 0;
+      position: absolute;
+      right: 82px;
+      top: calc(100% + 4px);
+      z-index: 1000;
+    }
+
+    .suggestions.visible {
+      display: block;
+    }
+
+    .suggestion {
+      cursor: pointer;
+      display: grid;
+      gap: 2px;
+      padding: 10px 12px;
+    }
+
+    .suggestion:hover,
+    .suggestion.active {
+      background: #edf4f7;
+    }
+
+    .suggestion strong {
+      color: #17212b;
+      font-size: 14px;
+    }
+
+    .suggestion span {
+      color: #60707c;
+      font-size: 12px;
     }
 
     button {
@@ -82,6 +127,114 @@
       border-radius: 8px;
       margin-top: 14px;
       padding: 14px;
+    }
+
+    .schedule-card {
+      background: #102a3a;
+      border: 0;
+      color: #f4fbff;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .schedule-header {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      padding: 14px;
+    }
+
+    .schedule-header h3 {
+      margin: 0;
+    }
+
+    .schedule-header p {
+      color: #a9c2cf;
+      font-size: 12px;
+      margin: 3px 0 0;
+    }
+
+    .schedule-tabs {
+      background: #0b202e;
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 6px;
+    }
+
+    .schedule-tab {
+      background: transparent;
+      border-radius: 6px;
+      color: #a9c2cf;
+      min-height: 36px;
+      padding: 8px;
+    }
+
+    .schedule-tab:hover,
+    .schedule-tab.active {
+      background: #efb366;
+      color: #102a3a;
+    }
+
+    .schedule-list {
+      display: grid;
+      gap: 8px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .flight-row {
+      background: #f4fbff;
+      border-radius: 6px;
+      color: #102a3a;
+      display: grid;
+      gap: 4px;
+      grid-template-columns: 1fr auto;
+      padding: 10px;
+    }
+
+    .flight-row strong {
+      font-size: 14px;
+    }
+
+    .flight-route,
+    .flight-meta,
+    .schedule-message {
+      color: #6a7f8b;
+      font-size: 12px;
+    }
+
+    .flight-status {
+      align-self: center;
+      background: #dcecf2;
+      border-radius: 999px;
+      color: #24536a;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 5px 8px;
+      text-transform: capitalize;
+    }
+
+    .credits {
+      border-top: 1px solid #d8e0e7;
+      margin-top: 24px;
+      padding-top: 18px;
+    }
+
+    .credits h3 {
+      font-size: 14px;
+      margin: 0 0 8px;
+    }
+
+    .credits p {
+      font-size: 12px;
+      margin: 6px 0;
+    }
+
+    .credits a {
+      color: #146c94;
     }
 
     .grid {
@@ -169,7 +322,7 @@
       color: white;
     }
 
-    .flight-category.ifvr {
+    .flight-category.ifr {
       background: #ff0000;
       color: white;
     }
@@ -244,11 +397,12 @@
   <main class="app">
     <section class="side">
       <h1>FlightWeather</h1>
-      <p>Enter an ICAO code. FlightWeather shows the airport on a real map and loads raw plus decoded METAR data.</p>
+      <p>Enter an ICAO code or airport name. FlightWeather shows the airport on a real map and loads raw plus decoded METAR data.</p>
 
       <form id="form">
-        <input id="icao" maxlength="4" placeholder="KIAH" autocomplete="off">
+        <input id="icao" maxlength="80" placeholder="KIAH or Bush Intercontinental" autocomplete="off">
         <button id="btn">Search</button>
+        <ul class="suggestions" id="suggestions" role="listbox"></ul>
       </form>
 
       <p class="error" id="error"></p>
@@ -261,6 +415,23 @@
           <div class="box"><span>IATA</span><strong id="iataOut"></strong></div>
           <div class="box"><span>Country</span><strong id="countryOut"></strong></div>
           <div class="box"><span>Coordinates</span><strong id="coordsOut"></strong></div>
+        </div>
+      </section>
+
+      <section class="card schedule-card" id="scheduleCard" hidden>
+        <div class="schedule-header">
+          <div>
+            <h3>Airport Schedule</h3>
+            <p id="scheduleSubtitle">Live timetable</p>
+          </div>
+        </div>
+        <div class="schedule-tabs" role="tablist" aria-label="Airport schedule">
+          <button class="schedule-tab active" id="scheduleTab" type="button">Schedule</button>
+          <button class="schedule-tab" id="arrivalsTab" type="button">Arrivals</button>
+          <button class="schedule-tab" id="departuresTab" type="button">Departures</button>
+        </div>
+        <div class="schedule-list" id="scheduleList">
+          <p class="schedule-message">Choose arrivals or departures to view flights.</p>
         </div>
       </section>
 
@@ -308,6 +479,14 @@
         <h3>Decoded METAR</h3>
         <pre id="decodedMetar">Search an airport.</pre>
       </section>
+
+      <footer class="credits">
+        <h3>FlightWeather credits</h3>
+        <p>Founded by <strong>Nishan.B</strong> and <strong>Joel.B</strong>.</p>
+        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://aviation-edge.com/" target="_blank" rel="noreferrer">Aviation Edge</a>, <a href="https://adsb.lol/" target="_blank" rel="noreferrer">ADSB.lol</a>, <a href="https://www.adsbdb.com/" target="_blank" rel="noreferrer">ADSBdb</a>, and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
+        <p>Interface: <a href="https://leafletjs.com/" target="_blank" rel="noreferrer">Leaflet</a>.</p>
+        <p>Map: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Map tiles © OpenStreetMap Foundation.</p>
+      </footer>
     </section>
 
     <section class="map-wrap">
@@ -345,18 +524,161 @@
     const ceiling = document.querySelector("#ceiling");
     const altimeter = document.querySelector("#altimeter");
     const toggleMetarBtn = document.querySelector("#toggleMetarBtn");
+    const suggestions = document.querySelector("#suggestions");
+    const scheduleCard = document.querySelector("#scheduleCard");
+    const scheduleSubtitle = document.querySelector("#scheduleSubtitle");
+    const scheduleList = document.querySelector("#scheduleList");
+    const scheduleTabs = [
+      document.querySelector("#scheduleTab"),
+      document.querySelector("#arrivalsTab"),
+      document.querySelector("#departuresTab")
+    ];
 
     let map;
     let marker;
     let showingSummary = true;
+    let suggestionRequest = 0;
+    let activeSuggestion = -1;
+    let currentSuggestions = [];
+    let scheduleIcao = "";
 
-    function clean(value) {
-      return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+    function formatScheduleTime(value) {
+      if (!value) return "Time unavailable";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value.replace("T", " ") : date.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    }
+
+    function scheduleAirport(flight, type) {
+      const airport = type === "arrival" ? flight.departure : flight.arrival;
+      return airport?.iataCode || airport?.icaoCode || "Unknown airport";
+    }
+
+    function scheduleRoute(flight, type) {
+      const departure = flight.departure?.iataCode || flight.departure?.icaoCode || "Unknown";
+      const arrival = flight.arrival?.iataCode || flight.arrival?.icaoCode || "Unknown";
+      return type === "arrival" ? `${departure} → ${arrival}` : `${departure} → ${arrival}`;
+    }
+
+    function renderSchedule(flights, type) {
+      scheduleList.replaceChildren();
+      if (!flights.length) {
+        const message = document.createElement("p");
+        message.className = "schedule-message";
+        message.textContent = `No ${type}s found for this airport.`;
+        scheduleList.append(message);
+        return;
+      }
+
+      flights.slice(0, 40).forEach(flight => {
+        const row = document.createElement("article");
+        row.className = "flight-row";
+        const airline = flight.airline?.name || "Unknown airline";
+        const flightNumber = flight.flight?.iataNumber || flight.flight?.icaoNumber || "Flight number unavailable";
+        const time = type === "arrival" ? flight.arrival?.scheduledTime : flight.departure?.scheduledTime;
+        const status = flight.status || "scheduled";
+        const details = document.createElement("div");
+        const number = document.createElement("strong");
+        number.textContent = flightNumber;
+        const route = document.createElement("div");
+        route.className = "flight-route";
+        route.textContent = `${airline} · ${scheduleRoute(flight, type)}`;
+        const flightTime = document.createElement("div");
+        flightTime.className = "flight-meta";
+        flightTime.textContent = time ? `Scheduled ${formatScheduleTime(time)}` : `Observed ${formatScheduleTime(flight.observedAt)}`;
+        details.append(number, route, flightTime);
+        const statusBadge = document.createElement("span");
+        statusBadge.className = "flight-status";
+        statusBadge.textContent = status;
+        row.append(details, statusBadge);
+        scheduleList.append(row);
+      });
+    }
+
+    async function loadSchedule(type) {
+      if (!scheduleIcao) return;
+      if (type === "schedule") {
+        scheduleTabs.forEach(tab => tab.classList.remove("active"));
+        scheduleTabs[0].classList.add("active");
+        scheduleList.innerHTML = "<p class=\"schedule-message\">Choose arrivals or departures to view flights.</p>";
+        return;
+      }
+
+      scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === (type === "arrival" ? scheduleTabs[1] : scheduleTabs[2])));
+
+      scheduleList.innerHTML = "<p class=\"schedule-message\">Loading live schedule...</p>";
+      try {
+        const response = await fetch(`/api/schedule/${scheduleIcao}/${type}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load schedule.");
+        const isLive = data.flights.some(flight => flight.liveSource);
+        scheduleSubtitle.textContent = isLive
+          ? `${data.flights.length} live movements · no published times`
+          : `${data.flights.length} ${type}s · live timetable`;
+        renderSchedule(data.flights, type);
+      } catch (err) {
+        scheduleList.innerHTML = `<p class="schedule-message">${err.message}</p>`;
+      }
+    }
+
+    function cleanSearch(value) {
+      return value.trim().replace(/\s+/g, " ").slice(0, 80);
+    }
+
+    function hideSuggestions() {
+      suggestions.replaceChildren();
+      suggestions.classList.remove("visible");
+      activeSuggestion = -1;
+      currentSuggestions = [];
+    }
+
+    function selectSuggestion(airport) {
+      input.value = airport.name;
+      hideSuggestions();
+      searchAirport(airport.name);
+    }
+
+    function showSuggestions(airports) {
+      suggestions.replaceChildren();
+      activeSuggestion = -1;
+      currentSuggestions = airports;
+      airports.forEach(airport => {
+        const item = document.createElement("li");
+        item.className = "suggestion";
+        item.setAttribute("role", "option");
+        const name = document.createElement("strong");
+        name.textContent = airport.name;
+        const details = document.createElement("span");
+        details.textContent = `${airport.icao} · ${airport.city || airport.country}`;
+        item.append(name, details);
+        item.addEventListener("mousedown", event => {
+          event.preventDefault();
+          selectSuggestion(airport);
+        });
+        suggestions.append(item);
+      });
+      suggestions.classList.toggle("visible", airports.length > 0);
+    }
+
+    async function updateSuggestions() {
+      const query = cleanSearch(input.value);
+      const requestId = ++suggestionRequest;
+      if (query.length < 3 || isFileProtocol) {
+        hideSuggestions();
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/airports?query=" + encodeURIComponent(query));
+        const data = await response.json();
+        if (requestId === suggestionRequest) showSuggestions(data.airports || []);
+      } catch {
+        if (requestId === suggestionRequest) hideSuggestions();
+      }
     }
 
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
-      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
@@ -387,14 +709,14 @@
     function determineFlightCategory(ceiling, visibility) {
       // VFR: ceiling >= 3000 ft, visibility >= 5 sm
       // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
-      // IFVR: ceiling 500-999 ft, visibility 1-2 sm
+      // IFR: ceiling 500-999 ft, visibility 1-2 sm
       // LIFR: ceiling < 500 ft, visibility < 1 sm
       const vis = visibility || 10;
       const cig = ceiling || 5000;
       
       if (cig >= 3000 && vis >= 5) return { category: "VFR", class: "vfr", color: "#00cc00" };
       if (cig >= 1000 && vis >= 3) return { category: "MVFR", class: "mvfr", color: "#0066ff" };
-      if (cig >= 500 && vis >= 1) return { category: "IFVR", class: "ifvr", color: "#ff0000" };
+      if (cig >= 500 && vis >= 1) return { category: "IFR", class: "ifr", color: "#ff0000" };
       return { category: "LIFR", class: "lifr", color: "#ff00ff" };
     }
 
@@ -478,23 +800,29 @@
       toggleMetarBtn.textContent = "View Full METAR";
     }
 
-    async function searchAirport(icao) {
+    async function searchAirport(query) {
       btn.disabled = true;
       error.textContent = "";
       rawMetar.textContent = "Loading raw METAR...";
       decodedMetar.textContent = "Loading decoded METAR...";
+      let resolvedIcao = query;
 
       try {
-        const airportRes = await fetch("/api/airport/" + encodeURIComponent(icao));
+        const airportRes = await fetch("/api/airport/" + encodeURIComponent(query));
         const airportData = await airportRes.json();
         if (!airportRes.ok) throw new Error(airportData.error || "Airport not found.");
+        resolvedIcao = airportData.airport.icao;
         showAirport(airportData.airport);
+        scheduleIcao = airportData.airport.icao;
+        scheduleCard.hidden = false;
+        scheduleSubtitle.textContent = airportData.airport.iata === "--" ? "Free recent flight movements" : `Live timetable for ${airportData.airport.iata}`;
+        loadSchedule("schedule");
       } catch (err) {
         error.textContent = err.message;
       }
 
       try {
-        const metarRes = await fetch("/api/metar/" + encodeURIComponent(icao));
+        const metarRes = await fetch("/api/metar/" + encodeURIComponent(resolvedIcao));
         const metarData = await metarRes.json();
         rawMetar.textContent = metarData.raw || "No raw METAR found.";
         decodedMetar.textContent = metarData.decoded || "No decoded METAR found.";
@@ -525,11 +853,6 @@
       showServeError();
     }
 
-    input.addEventListener("input", () => {
-      input.value = clean(input.value);
-      if (!isFileProtocol && input.value.length === 4) searchAirport(input.value);
-    });
-
     form.addEventListener("submit", event => {
       event.preventDefault();
       if (isFileProtocol) {
@@ -537,12 +860,35 @@
         return;
       }
 
-      const icao = clean(input.value);
-      if (icao.length !== 4) {
-        error.textContent = "Enter a 4-letter ICAO code like KIAH.";
+      const query = cleanSearch(input.value);
+      if (query.length < 2) {
+        error.textContent = "Enter an ICAO code or at least 2 characters of an airport name.";
         return;
       }
-      searchAirport(icao);
+      searchAirport(query);
+      hideSuggestions();
+    });
+
+    input.addEventListener("input", updateSuggestions);
+    input.addEventListener("keydown", event => {
+      const items = suggestions.querySelectorAll(".suggestion");
+      if (!suggestions.classList.contains("visible") || items.length === 0) return;
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        activeSuggestion = (activeSuggestion + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+        items.forEach((item, index) => item.classList.toggle("active", index === activeSuggestion));
+        items[activeSuggestion].scrollIntoView({ block: "nearest" });
+      } else if (event.key === "Enter" && activeSuggestion >= 0) {
+        event.preventDefault();
+        selectSuggestion(currentSuggestions[activeSuggestion]);
+      } else if (event.key === "Escape") {
+        hideSuggestions();
+      }
+    });
+
+    document.addEventListener("click", event => {
+      if (!form.contains(event.target)) hideSuggestions();
     });
 
     toggleMetarBtn.addEventListener("click", () => {
@@ -560,6 +906,10 @@
         showingSummary = true;
       }
     });
+
+    scheduleTabs[0].addEventListener("click", () => loadSchedule("schedule"));
+    scheduleTabs[1].addEventListener("click", () => loadSchedule("arrival"));
+    scheduleTabs[2].addEventListener("click", () => loadSchedule("departure"));
 
     initMap();
   </script>

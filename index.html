@@ -360,7 +360,7 @@
 
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
-      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
@@ -488,6 +488,7 @@
       toggleMetarBtn.textContent = "View Full METAR";
     }
 
+    async function searchAirport(icao) {
       btn.disabled = true;
       error.textContent = "";
       rawMetar.textContent = "Loading raw METAR...";
@@ -515,6 +516,7 @@
       }
 
       btn.disabled = false;
+    }
 
     const isFileProtocol = window.location.protocol === "file:";
 

@@ -1,1 +1,4 @@
 DEPLOYMENT.md
+.dev.vars
+.env
+.wrangler/

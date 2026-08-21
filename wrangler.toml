@@ -7,3 +7,6 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+[vars]
+# Set the secret with: wrangler secret put AVIATION_EDGE_API_KEY
