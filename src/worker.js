@@ -2,10 +2,14 @@ const AIRPORTS_CSV = "https://davidmegginson.github.io/ourairports-data/airports
 const METAR_API = "https://aviationweather.gov/api/data/metar";
 const OPENSKY_API = "https://opensky-network.org/api/flights";
 const OPENSKY_METADATA_API = "https://opensky-network.org/api/metadata/aircraft/icao24";
+const SCHEDULE_CACHE_MS = 120000;
+const METADATA_CACHE_MS = 86400000;
 const TILE_SERVER = "https://tile.openstreetmap.org";
 const MAX_TILE_ZOOM = 19;
 
 let airportCache = null;
+const scheduleCache = new Map();
+const metadataCache = new Map();
 
 function cleanIcao(value) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
@@ -146,6 +150,10 @@ function openSkyHeaders(username, password) {
 }
 
 async function getSchedule(airport, type, username, password) {
+  const cacheKey = `${airport.icao}:${type}`;
+  const cached = scheduleCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SCHEDULE_CACHE_MS) return cached.flights;
+
   const end = Math.floor(Date.now() / 1000);
   const begin = end - 2 * 60 * 60;
   const scheduleUrl = new URL(`${OPENSKY_API}/${type}`);
@@ -155,8 +163,14 @@ async function getSchedule(airport, type, username, password) {
 
   const headers = openSkyHeaders(username, password);
   const response = await fetch(scheduleUrl, { headers });
-  if (response.status === 404) return [];
-  if (response.status === 429) throw new Error("OpenSky rate limit reached. Add OpenSky credentials and try again later.");
+  if (response.status === 404) {
+    scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: [] });
+    return [];
+  }
+  if (response.status === 429) {
+    if (cached) return cached.flights;
+    throw new Error("OpenSky rate limit reached. Try again later.");
+  }
   if (!response.ok) throw new Error("Could not load OpenSky flight movements.");
 
   const flights = await response.json();
@@ -186,9 +200,15 @@ async function getSchedule(airport, type, username, password) {
     };
   }).slice(0, 40);
 
-  return Promise.all(normalizedFlights.map(async flight => {
+  const enrichedFlights = await Promise.all(normalizedFlights.map(async flight => {
     const icao24 = flight.flight.icao24;
     if (!icao24 || icao24 === "Unknown flight") return flight;
+
+    const cachedMetadata = metadataCache.get(icao24);
+    if (cachedMetadata && Date.now() - cachedMetadata.timestamp < METADATA_CACHE_MS) {
+      flight.aircraft = cachedMetadata.aircraft;
+      return flight;
+    }
 
     try {
       const metadataResponse = await fetch(`${OPENSKY_METADATA_API}/${encodeURIComponent(icao24)}`, { headers });
@@ -198,11 +218,14 @@ async function getSchedule(airport, type, username, password) {
         registration: metadata.registration || "",
         model: metadata.model || metadata.typecode || ""
       };
+      metadataCache.set(icao24, { timestamp: Date.now(), aircraft: flight.aircraft });
     } catch {
       // Aircraft metadata is optional; the movement record remains useful without it.
     }
     return flight;
   }));
+  scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: enrichedFlights });
+  return enrichedFlights;
 }
 
 export default {

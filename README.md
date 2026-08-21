@@ -14,4 +14,6 @@ npx wrangler secret put OPENSKY_PASSWORD
 
 For local Node development, set `OPENSKY_USERNAME` and `OPENSKY_PASSWORD` in the environment before starting the server. The app uses these credentials for authenticated OpenSky requests and asks OpenSky for aircraft registration and model metadata when available.
 
+The app caches each airport movement result for two minutes and aircraft metadata for one day. If OpenSky rate-limits a refresh, the most recent cached movement result is returned when available, helping conserve free API usage.
+
 METAR data comes from the [Aviation Weather Center](https://aviationweather.gov/), and airport reference data comes from [OurAirports](https://ourairports.com/data/).
