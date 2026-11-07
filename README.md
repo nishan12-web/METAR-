@@ -3,17 +3,8 @@ This is an app that tells you about airport weather via METAR. It is designed to
 
 ## Airport movements
 
-Recent arrivals and departures are provided by [The OpenSky Network](https://opensky-network.org/), using its airport flight endpoints and a two-hour lookback window. These are observed movements, not guaranteed future schedules.
+Recent arrivals and departures are provided by [adsb.lol](https://www.adsb.lol/), which exposes live ADS-B traffic around an airport. The app queries the airport neighborhood and classifies aircraft as arrivals or departures based on their movement vectors and recent position updates.
 
-OpenSky may rate-limit anonymous API requests. For Cloudflare, add an OpenSky account as secrets before deploying:
+The app caches each airport movement result for two minutes to reduce unnecessary API calls. Credit for the live aircraft data belongs to [adsb.lol](https://www.adsb.lol/) under the ODbL 1.0 open-data license.
 
-```bash
-npx wrangler secret put OPENSKY_USERNAME
-npx wrangler secret put OPENSKY_PASSWORD
-```
-
-For local Node development, set `OPENSKY_USERNAME` and `OPENSKY_PASSWORD` in the environment before starting the server. The app uses these credentials for authenticated OpenSky requests and asks OpenSky for aircraft registration and model metadata when available.
-
-The app caches each airport movement result for two minutes and aircraft metadata for one day. If OpenSky rate-limits a refresh, the most recent cached movement result is returned when available, helping conserve free API usage.
-
-METAR data comes from the [Aviation Weather Center](https://aviationweather.gov/), and airport reference data comes from [OurAirports](https://ourairports.com/data/).
+METAR data comes from the [Aviation Weather Center](https://aviationweather.gov/), airport reference data comes from [OurAirports](https://ourairports.com/data/), and the live flight map data is provided by [adsb.lol](https://www.adsb.lol/).

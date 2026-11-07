@@ -5,19 +5,15 @@ const path = require("node:path");
 const PORT = process.env.PORT || 7777;
 const AIRPORTS_CSV = "https://davidmegginson.github.io/ourairports-data/airports.csv";
 const METAR_API = "https://aviationweather.gov/api/data/metar";
-const OPENSKY_API = "https://opensky-network.org/api/flights";
-const OPENSKY_METADATA_API = "https://opensky-network.org/api/metadata/aircraft/icao24";
-const OPENSKY_USERNAME = process.env.OPENSKY_USERNAME || "";
-const OPENSKY_PASSWORD = process.env.OPENSKY_PASSWORD || "";
+const ADSB_API = "https://api.adsb.lol";
+const ADSB_RADIUS_NM = 30;
 const SCHEDULE_CACHE_MS = 120000;
-const METADATA_CACHE_MS = 86400000;
 const TILE_SERVER = "https://tile.openstreetmap.org";
 const MAX_TILE_ZOOM = 19;
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 let airportCache = null;
 const scheduleCache = new Map();
-const metadataCache = new Map();
 
 function send(res, status, body, type = "text/plain; charset=utf-8") {
   res.writeHead(status, {
@@ -162,85 +158,117 @@ async function getMetar(icao) {
   };
 }
 
+function toDegrees(value) {
+  return Number(value);
+}
+
+function normalizeHeading(value) {
+  const degrees = toDegrees(value);
+  if (!Number.isFinite(degrees)) return 0;
+  return (degrees % 360 + 360) % 360;
+}
+
+function getBearing(startLat, startLon, endLat, endLon) {
+  const startLatRad = (startLat * Math.PI) / 180;
+  const endLatRad = (endLat * Math.PI) / 180;
+  const deltaLon = ((endLon - startLon) * Math.PI) / 180;
+  const y = Math.sin(deltaLon) * Math.cos(endLatRad);
+  const x = Math.cos(startLatRad) * Math.sin(endLatRad) - Math.sin(startLatRad) * Math.cos(endLatRad) * Math.cos(deltaLon);
+  const degrees = (Math.atan2(y, x) * 180) / Math.PI;
+  return (degrees + 360) % 360;
+}
+
+function headingDifference(first, second) {
+  const diff = Math.abs(first - second);
+  return Math.min(diff, 360 - diff);
+}
+
+function classifyAdsbMovement(airport, aircraft) {
+  const airportLat = toDegrees(airport.lat);
+  const airportLon = toDegrees(airport.lon);
+  const aircraftLat = toDegrees(aircraft.lat);
+  const aircraftLon = toDegrees(aircraft.lon);
+  const headingValue = aircraft.true_heading ?? aircraft.track ?? aircraft.dir ?? null;
+  const heading = normalizeHeading(headingValue ?? 0);
+  const hasHeading = headingValue !== null && headingValue !== undefined;
+
+  if (!Number.isFinite(airportLat) || !Number.isFinite(airportLon) || !Number.isFinite(aircraftLat) || !Number.isFinite(aircraftLon)) {
+    return null;
+  }
+  if (!hasHeading) return null;
+
+  const aircraftToAirportBearing = getBearing(aircraftLat, aircraftLon, airportLat, airportLon);
+  const towardAirportDifference = headingDifference(heading, aircraftToAirportBearing);
+  const awayFromAirportDifference = headingDifference(heading, (aircraftToAirportBearing + 180) % 360);
+
+  if (towardAirportDifference <= 45) return "arrival";
+  if (awayFromAirportDifference <= 45) return "departure";
+  return null;
+}
+
 async function getSchedule(airport, type) {
   const cacheKey = `${airport.icao}:${type}`;
   const cached = scheduleCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < SCHEDULE_CACHE_MS) return cached.flights;
 
-  const end = Math.floor(Date.now() / 1000);
-  const begin = end - 2 * 60 * 60;
-  const scheduleUrl = new URL(`${OPENSKY_API}/${type}`);
-  scheduleUrl.searchParams.set("airport", airport.icao);
-  scheduleUrl.searchParams.set("begin", begin);
-  scheduleUrl.searchParams.set("end", end);
-
-  const headers = OPENSKY_USERNAME && OPENSKY_PASSWORD
-    ? { Authorization: `Basic ${btoa(`${OPENSKY_USERNAME}:${OPENSKY_PASSWORD}`)}` }
-    : {};
-  const response = await fetch(scheduleUrl, { headers });
+  const scheduleUrl = new URL(`${ADSB_API}/v2/point/${airport.lat}/${airport.lon}/${ADSB_RADIUS_NM}`);
+  const response = await fetch(scheduleUrl);
   if (response.status === 404) {
     scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: [] });
     return [];
   }
   if (response.status === 429) {
     if (cached) return cached.flights;
-    throw new Error("OpenSky rate limit reached. Try again later.");
+    throw new Error("ADSB.lol rate limit reached. Try again later.");
   }
-  if (!response.ok) throw new Error("Could not load OpenSky flight movements.");
+  if (!response.ok) throw new Error("Could not load ADSB.lol flight movements.");
 
-  const flights = await response.json();
-  const airports = await loadAirports();
-  const normalizedFlights = (Array.isArray(flights) ? flights : []).map(flight => {
-    const departure = airports.get(flight.estDepartureAirport) || {};
-    const arrival = airports.get(flight.estArrivalAirport) || {};
-    const callsign = flight.callsign?.trim() || flight.icao24 || "Unknown flight";
-    const observedAt = new Date((type === "arrival" ? flight.lastSeen : flight.firstSeen) * 1000).toISOString();
+  const payload = await response.json();
+  const flights = Array.isArray(payload.ac) ? payload.ac : [];
+  const normalizedFlights = flights
+    .map(aircraft => {
+      const callsign = String(aircraft.flight || aircraft.r || aircraft.hex || "").trim() || "Unknown flight";
+      const movementType = classifyAdsbMovement(airport, aircraft);
+      if (!movementType || movementType !== type) return null;
 
-    return {
-      flight: { iataNumber: callsign, icaoNumber: callsign, icao24: flight.icao24 || "" },
-      airline: { name: callsign === "Unknown flight" ? "Airline unavailable" : callsign.slice(0, 3) },
-      departure: {
-        iataCode: departure.iata || flight.estDepartureAirport || (type === "departure" ? airport.iata : "Unknown"),
-        icaoCode: flight.estDepartureAirport || "",
-        scheduledTime: null
-      },
-      arrival: {
-        iataCode: arrival.iata || flight.estArrivalAirport || (type === "arrival" ? airport.iata : "Unknown"),
-        icaoCode: flight.estArrivalAirport || "",
-        scheduledTime: null
-      },
-      status: type === "arrival" ? "recent arrival · OpenSky" : "recent departure · OpenSky",
-      observedAt,
-      liveSource: "OpenSky Network"
-    };
-  }).slice(0, 40);
+      const observedAt = Number.isFinite(Number(aircraft.seen))
+        ? new Date(Date.now() - Number(aircraft.seen) * 1000).toISOString()
+        : null;
+      const airlineCode = callsign.match(/^[A-Z]{2,3}/)?.[0] || "";
 
-  const enrichedFlights = await Promise.all(normalizedFlights.map(async flight => {
-    const icao24 = flight.flight.icao24;
-    if (!icao24 || icao24 === "Unknown flight") return flight;
-
-    const cachedMetadata = metadataCache.get(icao24);
-    if (cachedMetadata && Date.now() - cachedMetadata.timestamp < METADATA_CACHE_MS) {
-      flight.aircraft = cachedMetadata.aircraft;
-      return flight;
-    }
-
-    try {
-      const metadataResponse = await fetch(`${OPENSKY_METADATA_API}/${encodeURIComponent(icao24)}`, { headers });
-      if (!metadataResponse.ok) return flight;
-      const metadata = await metadataResponse.json();
-      flight.aircraft = {
-        registration: metadata.registration || "",
-        model: metadata.model || metadata.typecode || ""
+      return {
+        flight: {
+          number: callsign,
+          callsign,
+          iataNumber: callsign,
+          icaoNumber: callsign,
+          icao24: aircraft.hex || ""
+        },
+        airline: { name: "", code: airlineCode },
+        departure: {
+          iataCode: airport.iata || "",
+          icaoCode: airport.icao || "",
+          name: airport.name || "",
+          city: airport.city || ""
+        },
+        arrival: {
+          iataCode: airport.iata || "",
+          icaoCode: airport.icao || "",
+          name: airport.name || "",
+          city: airport.city || ""
+        },
+        status: type === "arrival" ? "recent arrival · ADSB.lol" : "recent departure · ADSB.lol",
+        movementType: type,
+        observedAt,
+        liveSource: "ADSB.lol"
       };
-      metadataCache.set(icao24, { timestamp: Date.now(), aircraft: flight.aircraft });
-    } catch {
-      // Aircraft metadata is optional; the movement record remains useful without it.
-    }
-    return flight;
-  }));
-  scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: enrichedFlights });
-  return enrichedFlights;
+    })
+    .filter(Boolean)
+    .sort((first, second) => new Date(second.observedAt || 0) - new Date(first.observedAt || 0))
+    .slice(0, 40);
+
+  scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: normalizedFlights });
+  return normalizedFlights;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -329,7 +357,8 @@ const server = http.createServer(async (req, res) => {
       try {
         const response = await fetch(tileUrl, {
           headers: {
-            Referer: `http://localhost:${PORT}`
+            "User-Agent": "FlightWeather/1.0 (+https://flightweather.org/)",
+            Referer: req.headers.referer || `http://localhost:${PORT}/`
           }
         });
 
@@ -340,7 +369,7 @@ const server = http.createServer(async (req, res) => {
 
         res.writeHead(200, {
           "Content-Type": "image/png",
-          "Cache-Control": "public, max-age=3600"
+          "Cache-Control": response.headers.get("cache-control") || "public, max-age=3600"
         });
 
         const body = await response.arrayBuffer();

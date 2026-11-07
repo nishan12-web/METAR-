@@ -4,75 +4,222 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FlightWeather</title>
+  <meta name="description" content="Airport METAR conditions and recent aircraft movements, with a map centered on your selected field.">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
+    /* Visual system: field-paper surfaces, ink typography, and one signal-orange accent. */
+    :root {
+      color-scheme: light;
+      --paper: #f2f0e9;
+      --paper-light: #fbfaf6;
+      --ink: #1d292b;
+      --muted: #657071;
+      --rule: #d6d5ca;
+      --panel: #e8e7dd;
+      --night: #192728;
+      --signal: #d65b35;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --serif: Georgia, "Times New Roman", serif;
+      --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
     * {
       box-sizing: border-box;
     }
 
     body {
       margin: 0;
-      background: #edf4f7;
-      color: #17212b;
-      font-family: Arial, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--signal);
+      outline-offset: 3px;
     }
 
     .app {
       display: grid;
-      grid-template-columns: 430px 1fr;
+      grid-template-columns: minmax(390px, 42%) 1fr;
       min-height: 100vh;
     }
 
     .side {
-      background: #ffffff;
-      border-right: 1px solid #d8e0e7;
+      background: var(--paper);
+      border-right: 1px solid var(--rule);
+      min-height: 100vh;
       overflow: auto;
-      padding: 22px;
+      padding: 26px clamp(22px, 3.2vw, 48px) 28px;
+    }
+
+    /* Brand and airport search: keep the first action clear and the copy specific. */
+    .masthead {
+      align-items: center;
+      border-bottom: 1px solid var(--ink);
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 42px;
+      padding-bottom: 13px;
+    }
+
+    .wordmark {
+      align-items: center;
+      display: flex;
+      font-size: 12px;
+      font-weight: 800;
+      gap: 10px;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .brand-mark {
+      border: 1px solid var(--ink);
+      display: inline-grid;
+      height: 22px;
+      place-items: center;
+      position: relative;
+      transform: rotate(45deg);
+      width: 22px;
+    }
+
+    .brand-mark::after {
+      background: var(--signal);
+      content: "";
+      height: 8px;
+      width: 8px;
+    }
+
+    .masthead-note,
+    .eyebrow,
+    .section-label,
+    .airport-code-label,
+    .map-coordinate,
+    .data-stamp {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .masthead-note {
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .intro {
+      margin-bottom: 31px;
+    }
+
+    .eyebrow,
+    .section-label {
+      color: var(--signal);
+      display: block;
+      font-weight: 700;
+      margin: 0 0 11px;
     }
 
     h1 {
-      font-size: 34px;
-      margin: 0 0 8px;
+      font-family: var(--serif);
+      font-size: clamp(42px, 4.7vw, 61px);
+      font-weight: 400;
+      letter-spacing: -0.055em;
+      line-height: 0.98;
+      margin: 0;
+      max-width: 440px;
     }
 
-    p {
-      color: #60707c;
-      line-height: 1.4;
+    .intro-copy {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      margin: 15px 0 0;
+      max-width: 350px;
+    }
+
+    .search-label {
+      color: var(--ink);
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin-bottom: 9px;
+      text-transform: uppercase;
     }
 
     form {
       display: grid;
-      gap: 10px;
-      grid-template-columns: 1fr auto;
-      margin: 20px 0;
+      grid-template-columns: minmax(0, 1fr) 102px;
       position: relative;
     }
 
     input {
-      border: 1px solid #b8c8d2;
-      border-radius: 8px;
-      font-size: 28px;
-      font-weight: 800;
-      padding: 12px;
+      background: var(--paper-light);
+      border: 1px solid var(--ink);
+      border-right: 0;
+      border-radius: 0;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 15px;
+      min-width: 0;
+      padding: 14px 13px;
       text-transform: uppercase;
       width: 100%;
     }
 
+    input::placeholder {
+      color: #898b82;
+      font-family: var(--sans);
+      font-size: 13px;
+      text-transform: none;
+    }
+
+    form > button {
+      background: var(--ink);
+      border: 1px solid var(--ink);
+      border-radius: 0;
+      color: var(--paper-light);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: background 140ms ease;
+    }
+
+    form > button:hover {
+      background: var(--signal);
+      border-color: var(--signal);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.58;
+    }
+
     .suggestions {
-      background: white;
-      border: 1px solid #b8c8d2;
-      border-radius: 8px;
-      box-shadow: 0 10px 24px rgba(23, 33, 43, 0.14);
+      background: var(--paper-light);
+      border: 1px solid var(--ink);
       display: none;
       left: 0;
       list-style: none;
       margin: 0;
       max-height: 330px;
       overflow-y: auto;
-      padding: 6px 0;
+      padding: 4px 0;
       position: absolute;
-      right: 82px;
-      top: calc(100% + 4px);
+      right: 102px;
+      top: calc(100% + 2px);
       z-index: 1000;
     }
 
@@ -83,56 +230,229 @@
     .suggestion {
       cursor: pointer;
       display: grid;
-      gap: 2px;
-      padding: 10px 12px;
+      gap: 4px;
+      padding: 11px 13px;
     }
 
     .suggestion:hover,
     .suggestion.active {
-      background: #edf4f7;
+      background: var(--panel);
     }
 
     .suggestion strong {
-      color: #17212b;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     .suggestion span {
-      color: #60707c;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    .error {
+      color: #a13d28;
       font-size: 12px;
+      font-weight: 700;
+      min-height: 17px;
     }
 
-    button {
-      background: #146c94;
-      border: 0;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-weight: 800;
-      padding: 0 18px;
-    }
-
-    button:hover {
-      background: #0f4f6c;
-    }
-
-    button:disabled {
-      background: #8fa3af;
-      cursor: wait;
-    }
-
+    /* Airport facts and METAR: compact, ruled data panels instead of generic cards. */
     .card {
-      background: #f8fbfc;
-      border: 1px solid #d8e0e7;
-      border-radius: 8px;
-      margin-top: 14px;
-      padding: 14px;
+      background: var(--paper-light);
+      border: 1px solid var(--rule);
+      margin-top: 20px;
+      padding: 18px;
     }
 
-    .schedule-card {
-      background: #102a3a;
+    #airportCard {
+      border-color: var(--ink);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 16px;
+      padding: 17px 18px;
+    }
+
+    #airportCard[hidden],
+    .card[hidden] {
+      display: none;
+    }
+
+    .airport-eyebrow {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+
+    #airportName {
+      font-family: var(--serif);
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: -0.025em;
+      margin: 0;
+    }
+
+    #airportPlace {
+      color: var(--muted);
+      font-size: 12px;
+      grid-column: 1;
+      margin: 0;
+    }
+
+    .grid {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      gap: 0;
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 9px;
+      padding-top: 12px;
+    }
+
+    .box {
+      min-width: 0;
+      padding-right: 7px;
+    }
+
+    .box span,
+    .metar-item label {
+      color: var(--muted);
+      display: block;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .box strong {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+
+    #metarSummaryCard h3,
+    .raw-metar-card h3 {
+      font-family: var(--serif);
+      font-size: 21px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      margin: 0 0 15px;
+    }
+
+    .metar-summary {
+      display: grid;
+      gap: 15px;
+    }
+
+    .flight-category {
+      align-items: center;
+      border-left: 3px solid currentColor;
+      display: flex;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      min-height: 35px;
+      padding: 7px 11px;
+      text-transform: uppercase;
+    }
+
+    .flight-category.vfr {
+      background: #e3eadc;
+      color: #385d35;
+    }
+
+    .flight-category.mvfr {
+      background: #e2e8ec;
+      color: #315d78;
+    }
+
+    .flight-category.ifr {
+      background: #f1e2d9;
+      color: #9b4229;
+    }
+
+    .flight-category.lifr {
+      background: #eadfe7;
+      color: #75446b;
+    }
+
+    .metar-grid {
+      border-top: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metar-item {
+      border-bottom: 1px solid var(--rule);
+      min-height: 66px;
+      padding: 12px 8px 10px 0;
+    }
+
+    .metar-item:nth-child(3n + 2),
+    .metar-item:nth-child(3n) {
+      padding-left: 12px;
+    }
+
+    .metar-item:nth-child(3n + 2) {
+      border-left: 1px solid var(--rule);
+      border-right: 1px solid var(--rule);
+    }
+
+    .metar-item .value {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .metar-item .units {
+      color: var(--muted);
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 400;
+      margin-left: 3px;
+    }
+
+    .toggle-metar {
+      background: transparent;
       border: 0;
-      color: #f4fbff;
+      border-bottom: 1px solid var(--ink);
+      border-radius: 0;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin-top: 15px;
+      padding: 0 0 6px;
+      text-align: left;
+      text-transform: uppercase;
+      transition: color 140ms ease, border-color 140ms ease;
+    }
+
+    .toggle-metar:hover {
+      border-color: var(--signal);
+      color: var(--signal);
+    }
+
+    pre {
+      background: var(--night);
+      color: #e5e8dc;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.6;
+      margin: 0;
+      overflow-wrap: anywhere;
+      padding: 14px;
+      white-space: pre-wrap;
+    }
+
+    /* Flight movements retain the dark instrument-panel contrast for scanability. */
+    .schedule-card {
+      background: var(--night);
+      border: 0;
+      color: var(--paper-light);
+      margin-top: 24px;
       overflow: hidden;
       padding: 0;
     }
@@ -142,272 +462,292 @@
       display: flex;
       gap: 10px;
       justify-content: space-between;
-      padding: 14px;
+      padding: 18px 18px 15px;
     }
 
     .schedule-header h3 {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
       margin: 0;
     }
 
     .schedule-header p {
-      color: #a9c2cf;
-      font-size: 12px;
-      margin: 3px 0 0;
+      color: #b1b8ae;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.05em;
+      margin: 6px 0 0;
+      text-transform: uppercase;
     }
 
     .schedule-tabs {
-      background: #0b202e;
+      border-bottom: 1px solid #394545;
+      border-top: 1px solid #394545;
       display: grid;
-      gap: 6px;
       grid-template-columns: repeat(3, 1fr);
-      padding: 6px;
+      padding: 0 12px;
     }
 
     .schedule-tab {
       background: transparent;
-      border-radius: 6px;
-      color: #a9c2cf;
-      min-height: 36px;
-      padding: 8px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      color: #b1b8ae;
+      font-size: 10px;
+      font-weight: 700;
+      min-height: 40px;
+      padding: 8px 4px;
+      text-transform: uppercase;
+      transition: color 140ms ease, border-color 140ms ease;
     }
 
     .schedule-tab:hover,
     .schedule-tab.active {
-      background: #efb366;
-      color: #102a3a;
+      border-bottom-color: var(--signal);
+      color: var(--paper-light);
     }
 
     .schedule-list {
       display: grid;
-      gap: 8px;
-      max-height: 360px;
+      gap: 0;
+      max-height: 330px;
       overflow-y: auto;
-      padding: 12px;
+      padding: 0 18px;
     }
 
     .flight-row {
-      background: #f4fbff;
-      border-radius: 6px;
-      color: #102a3a;
+      align-items: start;
+      border-bottom: 1px solid #394545;
+      color: var(--paper-light);
       display: grid;
-      gap: 4px;
-      grid-template-columns: 1fr auto;
-      padding: 10px;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 13px 0;
+    }
+
+    .flight-row:last-child {
+      border-bottom: 0;
     }
 
     .flight-row strong {
-      font-size: 14px;
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.02em;
     }
 
     .flight-route,
     .flight-meta,
     .schedule-message {
-      color: #6a7f8b;
-      font-size: 12px;
+      color: #b1b8ae;
+      font-size: 10px;
+      line-height: 1.45;
+      margin: 5px 0 0;
     }
 
     .flight-status {
-      align-self: center;
-      background: #dcecf2;
-      border-radius: 999px;
-      color: #24536a;
-      font-size: 11px;
-      font-weight: 800;
-      padding: 5px 8px;
-      text-transform: capitalize;
-    }
-
-    .credits {
-      border-top: 1px solid #d8e0e7;
-      margin-top: 24px;
-      padding-top: 18px;
-    }
-
-    .credits h3 {
-      font-size: 14px;
-      margin: 0 0 8px;
-    }
-
-    .credits p {
-      font-size: 12px;
-      margin: 6px 0;
-    }
-
-    .credits a {
-      color: #146c94;
-    }
-
-    .grid {
-      display: grid;
-      gap: 10px;
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .box {
-      background: white;
-      border: 1px solid #dfe8ed;
-      border-radius: 8px;
-      padding: 12px;
-    }
-
-    .box span {
-      color: #60707c;
-      display: block;
-      font-size: 12px;
-      font-weight: 800;
-      margin-bottom: 6px;
+      align-self: start;
+      color: #e7a084;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
       text-transform: uppercase;
     }
 
-    pre {
-      background: #202c35;
-      border-radius: 8px;
-      color: #eaf2f6;
-      font-size: 13px;
-      line-height: 1.45;
-      padding: 12px;
-      white-space: pre-wrap;
-      word-break: break-word;
+    .credits {
+      border-top: 1px solid var(--rule);
+      margin-top: 32px;
+      padding-top: 15px;
     }
 
+    .credits h3 {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      margin: 0 0 10px;
+      text-transform: uppercase;
+    }
+
+    .credits p {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.5;
+      margin: 5px 0;
+    }
+
+    .credits a {
+      color: var(--ink);
+      text-decoration-color: #9c9b8e;
+      text-underline-offset: 2px;
+    }
+
+    .credits a:hover {
+      color: var(--signal);
+    }
+
+    /* Map treatment: let the geography fill the canvas, with a quiet station label. */
     .map-wrap {
+      background: #d9ddd5;
+      min-height: 100vh;
       position: relative;
     }
 
     #map {
       height: 100vh;
+      min-height: 560px;
       width: 100%;
     }
 
     .map-title {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
-      left: 18px;
-      max-width: 360px;
-      padding: 12px 14px;
+      background: var(--paper-light);
+      border: 1px solid var(--ink);
+      left: 20px;
+      max-width: min(390px, calc(100% - 40px));
+      padding: 14px 17px;
       position: absolute;
-      top: 18px;
+      top: 20px;
       z-index: 500;
     }
 
-    .error {
-      color: #b33a35;
-      font-weight: 800;
+    .map-title::before {
+      background: var(--signal);
+      content: "";
+      height: 3px;
+      left: -1px;
+      position: absolute;
+      right: -1px;
+      top: -1px;
     }
 
-    .metar-summary {
-      display: grid;
-      gap: 12px;
-    }
-
-    .flight-category {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-weight: 800;
-      font-size: 14px;
-      width: 100%;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-
-    .flight-category.vfr {
-      background: #00cc00;
-      color: white;
-    }
-
-    .flight-category.mvfr {
-      background: #0066ff;
-      color: white;
-    }
-
-    .flight-category.ifr {
-      background: #ff0000;
-      color: white;
-    }
-
-    .flight-category.lifr {
-      background: #ff00ff;
-      color: white;
-    }
-
-    .metar-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .metar-item {
-      background: white;
-      border: 1px solid #dfe8ed;
-      border-radius: 8px;
-      padding: 10px;
-    }
-
-    .metar-item label {
-      color: #60707c;
+    .map-title strong {
       display: block;
-      font-size: 11px;
-      font-weight: 800;
-      margin-bottom: 4px;
+      font-family: var(--serif);
+      font-size: 19px;
+      font-weight: 400;
+    }
+
+    .map-title p {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.05em;
+      line-height: 1.5;
+      margin: 6px 0 0;
       text-transform: uppercase;
     }
 
-    .metar-item .value {
-      font-size: 16px;
-      font-weight: 600;
-      color: #17212b;
+    .leaflet-container {
+      background: #d9ddd5;
+      font-family: var(--sans);
     }
 
-    .metar-item .units {
-      font-size: 12px;
-      color: #60707c;
-      margin-left: 4px;
+    .leaflet-control-attribution {
+      font-size: 9px !important;
     }
 
-    .toggle-metar {
-      background: #146c94;
-      border: 0;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-weight: 800;
-      padding: 10px;
-      margin-top: 10px;
-      width: 100%;
-    }
-
-    .toggle-metar:hover {
-      background: #0f4f6c;
-    }
-
+    /* Small screens stack the tools above the map without shrinking the controls. */
     @media (max-width: 850px) {
       .app {
         grid-template-columns: 1fr;
       }
 
+      .side {
+        min-height: auto;
+        overflow: visible;
+        padding: 22px clamp(18px, 5vw, 34px) 28px;
+      }
+
+      .masthead {
+        margin-bottom: 34px;
+      }
+
+      .intro {
+        margin-bottom: 25px;
+      }
+
+      .map-wrap {
+        min-height: 440px;
+      }
+
       #map {
-        height: 520px;
+        height: 58vh;
+        min-height: 440px;
+      }
+
+      .map-title {
+        left: 14px;
+        top: 14px;
+      }
+    }
+
+    @media (max-width: 460px) {
+      #airportCard {
+        grid-template-columns: 1fr;
+      }
+
+      #airportPlace {
+        grid-column: 1;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        row-gap: 13px;
+      }
+
+      .metar-item {
+        min-height: 62px;
+      }
+
+      .metar-item:nth-child(3n + 2),
+      .metar-item:nth-child(3n) {
+        padding-left: 0;
+      }
+
+      .metar-item:nth-child(3n + 2) {
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .metar-item:nth-child(even) {
+        border-left: 1px solid var(--rule);
+        padding-left: 12px;
       }
     }
   </style>
 </head>
 <body>
+  <!-- Main split view: airport controls and weather on the left, live map on the right. -->
   <main class="app">
     <section class="side">
-      <h1>FlightWeather</h1>
-      <p>Enter an ICAO code or airport name. FlightWeather shows the airport on a real map and loads raw plus decoded METAR data.</p>
+      <!-- Compact wordmark keeps the app identifiable without competing with the weather data. -->
+      <header class="masthead">
+        <div class="wordmark"><span class="brand-mark" aria-hidden="true"></span> FlightWeather</div>
+        <span class="masthead-note">Field weather<br>and traffic</span>
+      </header>
 
+      <!-- Search accepts either an ICAO identifier or a human-readable airport name. -->
+      <section class="intro" aria-labelledby="pageTitle">
+        <p class="eyebrow">Aviation weather / live conditions</p>
+        <h1 id="pageTitle">Weather at<br>the field.</h1>
+        <p class="intro-copy">METAR conditions and recent aircraft movements, centered on the airport you need.</p>
+      </section>
+
+      <label class="search-label" for="icao">Find an airport</label>
       <form id="form">
-        <input id="icao" maxlength="80" placeholder="KIAH or Bush Intercontinental" autocomplete="off">
+        <input id="icao" maxlength="80" placeholder="ICAO code or airport name" autocomplete="off" aria-label="ICAO code or airport name">
         <button id="btn">Search</button>
         <ul class="suggestions" id="suggestions" role="listbox"></ul>
       </form>
 
-      <p class="error" id="error"></p>
+      <p class="error" id="error" role="status" aria-live="polite"></p>
 
+      <!-- Airport facts fill in after a successful airport lookup. -->
       <section class="card" id="airportCard" hidden>
+        <p class="section-label airport-eyebrow">Station record</p>
         <h2 id="airportName"></h2>
         <p id="airportPlace"></p>
         <div class="grid">
@@ -418,25 +758,10 @@
         </div>
       </section>
 
-      <section class="card schedule-card" id="scheduleCard" hidden>
-        <div class="schedule-header">
-          <div>
-            <h3>Airport Schedule</h3>
-            <p id="scheduleSubtitle">Recent OpenSky movements</p>
-          </div>
-        </div>
-        <div class="schedule-tabs" role="tablist" aria-label="Airport schedule">
-          <button class="schedule-tab active" id="scheduleTab" type="button">Schedule</button>
-          <button class="schedule-tab" id="arrivalsTab" type="button">Arrivals</button>
-          <button class="schedule-tab" id="departuresTab" type="button">Departures</button>
-        </div>
-        <div class="schedule-list" id="scheduleList">
-          <p class="schedule-message">Choose arrivals or departures to view flights.</p>
-        </div>
-      </section>
-
+      <!-- METAR summary is the primary result; the toggle reveals the full source report below. -->
       <section class="card" id="metarSummaryCard" hidden>
-        <h3>METAR Summary</h3>
+        <p class="section-label">Current conditions / METAR</p>
+        <h3>Field conditions</h3>
         <div class="metar-summary">
           <div class="flight-category" id="flightCategory"></div>
           <div class="metar-grid">
@@ -468,7 +793,7 @@
         </div>
       </section>
 
-      <button class="toggle-metar" id="toggleMetarBtn">View Full METAR</button>
+      <button class="toggle-metar" id="toggleMetarBtn" hidden>View Full METAR</button>
 
       <section class="card" id="rawMetarCard" hidden>
         <h3>Raw METAR</h3>
@@ -480,19 +805,39 @@
         <pre id="decodedMetar">Search an airport.</pre>
       </section>
 
+      <!-- Movement lists stay below the weather report, but share the same selected station. -->
+      <section class="card schedule-card" id="scheduleCard" hidden>
+        <div class="schedule-header">
+          <div>
+            <h3>Recent movements</h3>
+            <p id="scheduleSubtitle">Recent ADS-B movements</p>
+          </div>
+        </div>
+        <div class="schedule-tabs" role="tablist" aria-label="Airport schedule">
+          <button class="schedule-tab active" id="scheduleTab" type="button">All flights</button>
+          <button class="schedule-tab" id="arrivalsTab" type="button">Arrivals</button>
+          <button class="schedule-tab" id="departuresTab" type="button">Departures</button>
+        </div>
+        <div class="schedule-list" id="scheduleList" aria-live="polite">
+          <p class="schedule-message">Choose arrivals or departures to view flights.</p>
+        </div>
+      </section>
+
+      <!-- Preserve data-source credits and map attribution where visitors can find them. -->
       <footer class="credits">
-        <h3>FlightWeather credits</h3>
+        <h3>About this report</h3>
         <p>Founded by <strong>Nishan.B</strong> and <strong>Joel.B</strong>.</p>
-        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://opensky-network.org/" target="_blank" rel="noreferrer">The OpenSky Network</a>, and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
+        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://www.adsb.lol/" target="_blank" rel="noreferrer">adsb.lol</a> (ODbL 1.0), and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
         <p>Interface: <a href="https://leafletjs.com/" target="_blank" rel="noreferrer">Leaflet</a>.</p>
         <p>Map: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Map tiles © OpenStreetMap Foundation.</p>
       </footer>
     </section>
 
+    <!-- Leaflet owns the map canvas; the overlay mirrors the selected station. -->
     <section class="map-wrap">
       <div class="map-title">
-        <strong id="mapAirport">World Map</strong>
-        <p id="mapText">Search an ICAO code to move the map.</p>
+        <strong id="mapAirport">Airport map</strong>
+        <p id="mapText">Search a station to center the map.</p>
       </div>
       <div id="map"></div>
     </section>
@@ -500,6 +845,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    // Cache the page's controls once so render and event functions share the same elements.
     const form = document.querySelector("#form");
     const input = document.querySelector("#icao");
     const btn = document.querySelector("#btn");
@@ -542,55 +888,69 @@
     let currentSuggestions = [];
     let scheduleIcao = "";
 
+    // Format provider timestamps for the visitor's locale and handle absent or malformed values.
     function formatScheduleTime(value) {
       if (!value) return "Time unavailable";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? value.replace("T", " ") : date.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
     }
 
-    function scheduleAirport(flight, type) {
-      const airport = type === "arrival" ? flight.departure : flight.arrival;
-      return airport?.iataCode || airport?.icaoCode || "Unknown airport";
+    // Prefer a full airport name and city, falling back to the available station code.
+    function scheduleAirportLabel(airport) {
+      const code = airport?.iataCode || airport?.icaoCode || "";
+      const name = airport?.name || "";
+      const city = airport?.city || "";
+      const label = [name, city].filter(Boolean).join(" · ") || code || "Unknown airport";
+      return code && name ? `${label} (${code})` : label;
     }
 
-    function scheduleRoute(flight, type) {
-      const departure = flight.departure?.iataCode || flight.departure?.icaoCode || "Unknown";
-      const arrival = flight.arrival?.iataCode || flight.arrival?.icaoCode || "Unknown";
-      return type === "arrival" ? `${departure} → ${arrival}` : `${departure} → ${arrival}`;
+    // Keep empty states specific to the selected movement tab.
+    function scheduleEmptyMessage(type) {
+      if (type === "schedule") {
+        return "No arrivals or departures were recorded in ADSB.lol's last two-hour window.";
+      }
+      if (type === "arrival") {
+        return "No arrivals were recorded in ADSB.lol's last two-hour window.";
+      }
+      if (type === "departure") {
+        return "No departures were recorded in ADSB.lol's last two-hour window.";
+      }
+      return "No flights were recorded in ADSB.lol's last two-hour window.";
     }
 
+    // Replace the movement list with either its empty state or the latest flight observations.
     function renderSchedule(flights, type) {
       scheduleList.replaceChildren();
       if (!flights.length) {
         const message = document.createElement("p");
         message.className = "schedule-message";
-        message.textContent = `No ${type}s found for this airport.`;
+        message.textContent = scheduleEmptyMessage(type);
         scheduleList.append(message);
         return;
       }
 
+      // Render at most 40 rows so a large provider response stays quick to scan.
       flights.slice(0, 40).forEach(flight => {
         const row = document.createElement("article");
         row.className = "flight-row";
-        const airline = flight.airline?.name || "Unknown airline";
-        const flightNumber = flight.flight?.iataNumber || flight.flight?.icaoNumber || "Flight number unavailable";
-        const time = type === "arrival" ? flight.arrival?.scheduledTime : flight.departure?.scheduledTime;
-        const status = flight.status || "scheduled";
+        const movementType = flight.movementType || type;
+        const airline = flight.airline?.name || (flight.airline?.code ? `Carrier code ${flight.airline.code}` : "Carrier unavailable");
+        const flightNumber = flight.flight?.number || "Flight number unavailable";
+        const callsign = flight.flight?.callsign || "Callsign unavailable";
+        const status = movementType === "arrival" ? "arrival" : "departure";
         const details = document.createElement("div");
         const number = document.createElement("strong");
         number.textContent = flightNumber;
         const route = document.createElement("div");
         route.className = "flight-route";
-        route.textContent = `${airline} · ${scheduleRoute(flight, type)}`;
+        route.textContent = `${airline} · From ${scheduleAirportLabel(flight.departure)} to ${scheduleAirportLabel(flight.arrival)}`;
         const flightTime = document.createElement("div");
         flightTime.className = "flight-meta";
-        flightTime.textContent = time ? `Scheduled ${formatScheduleTime(time)}` : `Observed ${formatScheduleTime(flight.observedAt)}`;
-        const aircraft = document.createElement("div");
-        aircraft.className = "flight-meta";
-        const registration = flight.aircraft?.registration || "Registration unavailable";
-        const model = flight.aircraft?.model ? ` · ${flight.aircraft.model}` : "";
-        aircraft.textContent = `Aircraft: ${registration}${model}`;
-        details.append(number, route, flightTime, aircraft);
+        flightTime.textContent = `Observed ${formatScheduleTime(flight.observedAt)}`;
+        const flightCallsign = document.createElement("div");
+        flightCallsign.className = "flight-meta";
+        flightCallsign.textContent = `Callsign: ${callsign}`;
+        details.append(number, route, flightTime, flightCallsign);
         const statusBadge = document.createElement("span");
         statusBadge.className = "flight-status";
         statusBadge.textContent = status;
@@ -599,34 +959,43 @@
       });
     }
 
+    // Load the selected movement type; the all-flights view requests both directions together.
     async function loadSchedule(type) {
       if (!scheduleIcao) return;
-      if (type === "schedule") {
-        scheduleTabs.forEach(tab => tab.classList.remove("active"));
-        scheduleTabs[0].classList.add("active");
-        scheduleList.innerHTML = "<p class=\"schedule-message\">Choose arrivals or departures to view flights.</p>";
-        return;
-      }
-
-      scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === (type === "arrival" ? scheduleTabs[1] : scheduleTabs[2])));
+      // Keep the tab highlight synchronized with the currently requested movement view.
+      scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === scheduleTabs[type === "schedule" ? 0 : type === "arrival" ? 1 : 2]));
 
       scheduleList.innerHTML = "<p class=\"schedule-message\">Loading live schedule...</p>";
       try {
-        const response = await fetch(`/api/schedule/${scheduleIcao}/${type}`);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Could not load schedule.");
-        const isLive = data.flights.some(flight => flight.liveSource);
-        scheduleSubtitle.textContent = `${data.flights.length} recent ${type}s · OpenSky Network`;
-        renderSchedule(data.flights, type);
+        const movementTypes = type === "schedule" ? ["arrival", "departure"] : [type];
+        // Fetch arrival and departure data concurrently for the combined view.
+        const results = await Promise.all(movementTypes.map(async movementType => {
+          const response = await fetch(`/api/schedule/${scheduleIcao}/${movementType}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Could not load flight movements.");
+          // Attach the requested direction because both responses are merged below.
+          return (Array.isArray(data.flights) ? data.flights : []).map(flight => ({ ...flight, movementType }));
+        }));
+        const flights = results.flat().sort((first, second) =>
+          new Date(second.observedAt || 0) - new Date(first.observedAt || 0)
+        );
+        scheduleSubtitle.textContent = type === "schedule"
+          ? `${flights.length} recent movements · last 2 hours · ADSB.lol`
+          : `${flights.length} recent ${type}s · last 2 hours · ADSB.lol`;
+        renderSchedule(flights, type);
       } catch (err) {
-        scheduleList.innerHTML = `<p class="schedule-message">${err.message}</p>`;
+        scheduleSubtitle.textContent = "ADSB.lol movement data unavailable";
+        scheduleList.textContent = err.message;
+        scheduleList.className = "schedule-list schedule-message";
       }
     }
 
+    // Normalize user input before lookup and suggestion requests.
     function cleanSearch(value) {
       return value.trim().replace(/\s+/g, " ").slice(0, 80);
     }
 
+    // Clear suggestion results and reset keyboard-selection state.
     function hideSuggestions() {
       suggestions.replaceChildren();
       suggestions.classList.remove("visible");
@@ -634,12 +1003,14 @@
       currentSuggestions = [];
     }
 
+    // Use the selected suggestion's full name in the same airport lookup flow.
     function selectSuggestion(airport) {
       input.value = airport.name;
       hideSuggestions();
       searchAirport(airport.name);
     }
 
+    // Turn each airport result into a keyboard-accessible, clickable suggestion.
     function showSuggestions(airports) {
       suggestions.replaceChildren();
       activeSuggestion = -1;
@@ -662,6 +1033,7 @@
       suggestions.classList.toggle("visible", airports.length > 0);
     }
 
+    // Ignore stale suggestion responses so slow earlier queries cannot replace newer results.
     async function updateSuggestions() {
       const query = cleanSearch(input.value);
       const requestId = ++suggestionRequest;
@@ -679,15 +1051,17 @@
       }
     }
 
+    // Create the base map and tile layer before any airport is selected.
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
       marker = L.marker([20, 0]).addTo(map);
     }
 
+    // Fill station details and move the map marker when the lookup resolves.
     function showAirport(airport) {
       airportCard.hidden = false;
       airportName.textContent = airport.name;
@@ -709,6 +1083,7 @@
       mapText.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
     }
 
+    // Apply standard VFR/MVFR/IFR/LIFR thresholds to the parsed ceiling and visibility.
     function determineFlightCategory(ceiling, visibility) {
       // VFR: ceiling >= 3000 ft, visibility >= 5 sm
       // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
@@ -723,6 +1098,7 @@
       return { category: "LIFR", class: "lifr", color: "#ff00ff" };
     }
 
+    // Extract the small set of METAR fields displayed in the at-a-glance summary.
     function parseMetarData(decodedText) {
       const data = {
         temp: "--",
@@ -779,6 +1155,7 @@
       return data;
     }
 
+    // Update the visible summary and category using one decoded METAR response.
     function showMetarSummary(decodedText) {
       const metarData = parseMetarData(decodedText);
       
@@ -799,13 +1176,20 @@
       flightCategory.className = "flight-category " + category.class;
 
       metarSummaryCard.hidden = false;
+      toggleMetarBtn.hidden = false;
       showingSummary = true;
       toggleMetarBtn.textContent = "View Full METAR";
     }
 
+    // Resolve the airport first, then load its station weather and movement data.
     async function searchAirport(query) {
       btn.disabled = true;
       error.textContent = "";
+      // Hide the previous report while a new station is resolving.
+      toggleMetarBtn.hidden = true;
+      metarSummaryCard.hidden = true;
+      document.getElementById("rawMetarCard").hidden = true;
+      document.getElementById("decodedMetarCard").hidden = true;
       rawMetar.textContent = "Loading raw METAR...";
       decodedMetar.textContent = "Loading decoded METAR...";
       let resolvedIcao = query;
@@ -819,8 +1203,8 @@
         scheduleIcao = airportData.airport.icao;
         scheduleCard.hidden = false;
         scheduleSubtitle.textContent = airportData.airport.iata === "--"
-          ? "Recent OpenSky movements"
-          : `Recent OpenSky movements for ${airportData.airport.iata}`;
+          ? "Recent ADS-B movements"
+          : `Recent ADS-B movements for ${airportData.airport.iata}`;
         loadSchedule("schedule");
       } catch (err) {
         error.textContent = err.message;
@@ -843,6 +1227,7 @@
 
     const isFileProtocol = window.location.protocol === "file:";
 
+    // Explain why API-backed features need the site to be served over HTTP.
     function showServeError() {
       error.textContent = "Start the app with \"npm start\" and open it through the local server instead of using index.html directly.";
       rawMetar.textContent = "Run the local server to use the METAR lookup.";
@@ -858,6 +1243,7 @@
       showServeError();
     }
 
+    // Form and keyboard handlers preserve mouse-free search and suggestion selection.
     form.addEventListener("submit", event => {
       event.preventDefault();
       if (isFileProtocol) {
@@ -882,6 +1268,7 @@
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         activeSuggestion = (activeSuggestion + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+        // Keep exactly one visible suggestion highlighted as the user presses an arrow key.
         items.forEach((item, index) => item.classList.toggle("active", index === activeSuggestion));
         items[activeSuggestion].scrollIntoView({ block: "nearest" });
       } else if (event.key === "Enter" && activeSuggestion >= 0) {
