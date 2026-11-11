@@ -5,22 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FlightWeather</title>
   <meta name="description" content="Airport METAR conditions and recent aircraft movements, with a map centered on your selected field.">
+  <meta name="theme-color" content="#F2EFE9">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     /* Visual system: field-paper surfaces, ink typography, and one signal-orange accent. */
     :root {
       color-scheme: light;
-      --paper: #f2f0e9;
-      --paper-light: #fbfaf6;
-      --ink: #1d292b;
-      --muted: #657071;
+      --bg-paper: #F2EFE9;
+      --surface-card: #FFFFFF;
+      --surface-terminal: #1E2525;
+      --ink-primary: #1E2522;
+      --ink-muted: #5A625E;
+      --accent-terracotta: #C85A32;
+      --accent-terracotta-soft: #F7EAE4;
+      --cat-vfr-bg: #E2EBE0;
+      --cat-vfr-ink: #1F4D2B;
+      --cat-mvfr-bg: #DCE6F2;
+      --cat-mvfr-ink: #1E457A;
+      --cat-ifr-bg: #F5E1DC;
+      --cat-ifr-ink: #8C2D19;
+      --cat-lifr-bg: #EDE0F2;
+      --cat-lifr-ink: #5E237A;
+      --font-serif: "Instrument Serif", "Playfair Display", Georgia, serif;
+      --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", "IBM Plex Mono", monospace;
+      --paper: var(--bg-paper);
+      --paper-light: var(--surface-card);
+      --ink: var(--ink-primary);
+      --muted: var(--ink-muted);
       --rule: #d6d5ca;
       --panel: #e8e7dd;
-      --night: #192728;
-      --signal: #d65b35;
-      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      --serif: Georgia, "Times New Roman", serif;
-      --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --night: var(--surface-terminal);
+      --signal: var(--accent-terracotta);
+      --mono: var(--font-mono), "SFMono-Regular", Consolas, monospace;
+      --serif: var(--font-serif);
+      --sans: var(--font-sans);
     }
 
     * {
@@ -51,6 +71,7 @@
     }
 
     .app {
+      align-items: start;
       display: grid;
       grid-template-columns: minmax(390px, 42%) 1fr;
       min-height: 100vh;
@@ -60,7 +81,7 @@
       background: var(--paper);
       border-right: 1px solid var(--rule);
       min-height: 100vh;
-      overflow: auto;
+      overflow: visible;
       padding: 26px clamp(22px, 3.2vw, 48px) 28px;
     }
 
@@ -249,6 +270,39 @@
       font-size: 10px;
     }
 
+    .quick-picks {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin: 11px 0 17px;
+    }
+
+    .quick-picks-label {
+      color: var(--muted);
+      flex-basis: 100%;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .quick-pick {
+      background: transparent;
+      border: 1px solid var(--ink);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 9px;
+      padding: 7px 8px;
+      transition: background 140ms ease, color 140ms ease;
+    }
+
+    .quick-pick:hover,
+    .quick-pick:focus-visible {
+      background: var(--ink);
+      color: var(--paper-light);
+    }
+
     .error {
       color: #a13d28;
       font-size: 12px;
@@ -259,7 +313,7 @@
     /* Airport facts and METAR: compact, ruled data panels instead of generic cards. */
     .card {
       background: var(--paper-light);
-      border: 1px solid var(--rule);
+      border: 1px solid var(--ink);
       margin-top: 20px;
       padding: 18px;
     }
@@ -358,23 +412,48 @@
     }
 
     .flight-category.vfr {
-      background: #e3eadc;
-      color: #385d35;
+      background: var(--cat-vfr-bg);
+      color: var(--cat-vfr-ink);
     }
 
     .flight-category.mvfr {
-      background: #e2e8ec;
-      color: #315d78;
+      background: var(--cat-mvfr-bg);
+      color: var(--cat-mvfr-ink);
     }
 
     .flight-category.ifr {
-      background: #f1e2d9;
-      color: #9b4229;
+      background: var(--cat-ifr-bg);
+      color: var(--cat-ifr-ink);
     }
 
     .flight-category.lifr {
-      background: #eadfe7;
-      color: #75446b;
+      background: var(--cat-lifr-bg);
+      color: var(--cat-lifr-ink);
+    }
+
+    .field-dispatch {
+      background: var(--accent-terracotta-soft);
+      border: 1px solid var(--ink);
+      border-left: 3px solid var(--signal);
+      font-family: var(--serif);
+      font-size: 16px;
+      line-height: 1.45;
+      margin: 0 0 15px;
+      padding: 12px 14px;
+    }
+
+    .field-dispatch p {
+      margin: 0;
+    }
+
+    .field-dispatch p + p {
+      margin-top: 7px;
+    }
+
+    .field-dispatch .dispatch-attribution {
+      font-family: var(--sans);
+      font-size: 10px;
+      margin-top: 7px;
     }
 
     .metar-grid {
@@ -412,6 +491,14 @@
       font-size: 11px;
       font-weight: 400;
       margin-left: 3px;
+    }
+
+    .metric-context {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+      margin: 5px 0 0;
+      min-height: 30px;
     }
 
     .toggle-metar {
@@ -564,52 +651,73 @@
       padding-top: 15px;
     }
 
-    .credits h3 {
-      font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 0.08em;
-      margin: 0 0 10px;
+    .credits-button {
+      align-items: center;
+      background: var(--ink);
+      border: 1px solid var(--ink);
+      color: var(--paper-light);
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 700;
+      justify-content: center;
+      letter-spacing: 0.06em;
+      min-height: 44px;
+      padding: 0 18px;
+      text-decoration: none;
       text-transform: uppercase;
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
     }
 
-    .credits p {
-      color: var(--muted);
-      font-size: 10px;
-      line-height: 1.5;
-      margin: 5px 0;
+    .credits-button:hover {
+      background: var(--signal);
+      border-color: var(--signal);
+      color: var(--paper-light);
+      transform: translateY(-1px);
     }
 
-    .credits a {
-      color: var(--ink);
-      text-decoration-color: #9c9b8e;
-      text-underline-offset: 2px;
-    }
-
-    .credits a:hover {
-      color: var(--signal);
+    .credits-button:focus-visible {
+      outline: 2px solid var(--signal);
+      outline-offset: 3px;
     }
 
     /* Map treatment: let the geography fill the canvas, with a quiet station label. */
     .map-wrap {
       background: #d9ddd5;
-      min-height: 100vh;
-      position: relative;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
 
     #map {
-      height: 100vh;
-      min-height: 560px;
+      height: 100%;
+      min-height: 0;
       width: 100%;
     }
 
+    .leaflet-tile-pane {
+      filter: sepia(10%) contrast(96%) saturate(84%);
+    }
+
+    .map-wrap::after {
+      border: 1px solid rgba(255, 255, 255, 0.48);
+      content: "";
+      inset: 9px;
+      pointer-events: none;
+      position: absolute;
+      z-index: 400;
+    }
+
     .map-title {
-      background: var(--paper-light);
+      background: rgba(255, 255, 255, 0.94);
       border: 1px solid var(--ink);
+      box-shadow: 5px 5px 0 rgba(30, 37, 34, 0.14), 0 16px 35px -22px rgba(30, 37, 34, 0.5);
       left: 20px;
       max-width: min(390px, calc(100% - 40px));
       padding: 14px 17px;
       position: absolute;
       top: 20px;
+      transform: perspective(600px) rotateY(-2deg);
       z-index: 500;
     }
 
@@ -652,6 +760,7 @@
     /* Small screens stack the tools above the map without shrinking the controls. */
     @media (max-width: 850px) {
       .app {
+        align-items: stretch;
         grid-template-columns: 1fr;
       }
 
@@ -670,7 +779,10 @@
       }
 
       .map-wrap {
+        height: auto;
         min-height: 440px;
+        position: relative;
+        top: auto;
       }
 
       #map {
@@ -720,16 +832,13 @@
   </style>
 </head>
 <body>
-  <!-- Main split view: airport controls and weather on the left, live map on the right. -->
   <main class="app">
     <section class="side">
-      <!-- Compact wordmark keeps the app identifiable without competing with the weather data. -->
       <header class="masthead">
         <div class="wordmark"><span class="brand-mark" aria-hidden="true"></span> FlightWeather</div>
         <span class="masthead-note">Field weather<br>and traffic</span>
       </header>
 
-      <!-- Search accepts either an ICAO identifier or a human-readable airport name. -->
       <section class="intro" aria-labelledby="pageTitle">
         <p class="eyebrow">Aviation weather / live conditions</p>
         <h1 id="pageTitle">Weather at<br>the field.</h1>
@@ -743,9 +852,17 @@
         <ul class="suggestions" id="suggestions" role="listbox"></ul>
       </form>
 
+      <div class="quick-picks" aria-label="Popular airports">
+        <span class="quick-picks-label">Try a field</span>
+        <button class="quick-pick" type="button" data-icao="KJFK">KJFK · New York</button>
+        <button class="quick-pick" type="button" data-icao="KORD">KORD · Chicago</button>
+        <button class="quick-pick" type="button" data-icao="KSFO">KSFO · San Francisco</button>
+        <button class="quick-pick" type="button" data-icao="EGLL">EGLL · London</button>
+        <button class="quick-pick" type="button" data-icao="KOSH">KOSH · Oshkosh</button>
+      </div>
+
       <p class="error" id="error" role="status" aria-live="polite"></p>
 
-      <!-- Airport facts fill in after a successful airport lookup. -->
       <section class="card" id="airportCard" hidden>
         <p class="section-label airport-eyebrow">Station record</p>
         <h2 id="airportName"></h2>
@@ -758,36 +875,42 @@
         </div>
       </section>
 
-      <!-- METAR summary is the primary result; the toggle reveals the full source report below. -->
       <section class="card" id="metarSummaryCard" hidden>
         <p class="section-label">Current conditions / METAR</p>
         <h3>Field conditions</h3>
         <div class="metar-summary">
+          <div class="field-dispatch" id="fieldDispatch" aria-live="polite"></div>
           <div class="flight-category" id="flightCategory"></div>
           <div class="metar-grid">
             <div class="metar-item">
               <label>Temperature</label>
               <div class="value"><span id="temp">--</span><span class="units">°C</span></div>
+              <p class="metric-context" id="tempContext">Air temperature at the field.</p>
             </div>
             <div class="metar-item">
               <label>Dew Point</label>
               <div class="value"><span id="dewpoint">--</span><span class="units">°C</span></div>
+              <p class="metric-context" id="dewpointContext">Moisture level in the air.</p>
             </div>
             <div class="metar-item">
               <label>Wind</label>
               <div class="value"><span id="wind">--</span></div>
+              <p class="metric-context" id="windContext">Surface wind relative to north.</p>
             </div>
             <div class="metar-item">
               <label>Visibility</label>
               <div class="value"><span id="visibility">--</span></div>
+              <p class="metric-context" id="visibilityContext">How far pilots can see horizontally.</p>
             </div>
             <div class="metar-item">
               <label>Ceiling</label>
               <div class="value"><span id="ceiling">--</span></div>
+              <p class="metric-context" id="ceilingContext">Lowest broken or overcast cloud layer.</p>
             </div>
             <div class="metar-item">
               <label>Altimeter</label>
               <div class="value"><span id="altimeter">--</span></div>
+              <p class="metric-context" id="altimeterContext">Pressure setting used for altitude readings.</p>
             </div>
           </div>
         </div>
@@ -805,7 +928,6 @@
         <pre id="decodedMetar">Search an airport.</pre>
       </section>
 
-      <!-- Movement lists stay below the weather report, but share the same selected station. -->
       <section class="card schedule-card" id="scheduleCard" hidden>
         <div class="schedule-header">
           <div>
@@ -823,17 +945,11 @@
         </div>
       </section>
 
-      <!-- Preserve data-source credits and map attribution where visitors can find them. -->
       <footer class="credits">
-        <h3>About this report</h3>
-        <p>Founded by <strong>Nishan.B</strong> and <strong>Joel.B</strong>.</p>
-        <p>Data: <a href="https://aviationweather.gov/" target="_blank" rel="noreferrer">Aviation Weather Center</a>, <a href="https://www.adsb.lol/" target="_blank" rel="noreferrer">adsb.lol</a> (ODbL 1.0), and <a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a>.</p>
-        <p>Interface: <a href="https://leafletjs.com/" target="_blank" rel="noreferrer">Leaflet</a>.</p>
-        <p>Map: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Map tiles © OpenStreetMap Foundation.</p>
+        <a class="credits-button" href="/credits.html">Credits, privacy &amp; cookies</a>
       </footer>
     </section>
 
-    <!-- Leaflet owns the map canvas; the overlay mirrors the selected station. -->
     <section class="map-wrap">
       <div class="map-title">
         <strong id="mapAirport">Airport map</strong>
@@ -845,7 +961,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Cache the page's controls once so render and event functions share the same elements.
     const form = document.querySelector("#form");
     const input = document.querySelector("#icao");
     const btn = document.querySelector("#btn");
@@ -869,6 +984,13 @@
     const visibility = document.querySelector("#visibility");
     const ceiling = document.querySelector("#ceiling");
     const altimeter = document.querySelector("#altimeter");
+    const fieldDispatch = document.querySelector("#fieldDispatch");
+    const tempContext = document.querySelector("#tempContext");
+    const dewpointContext = document.querySelector("#dewpointContext");
+    const windContext = document.querySelector("#windContext");
+    const visibilityContext = document.querySelector("#visibilityContext");
+    const ceilingContext = document.querySelector("#ceilingContext");
+    const altimeterContext = document.querySelector("#altimeterContext");
     const toggleMetarBtn = document.querySelector("#toggleMetarBtn");
     const suggestions = document.querySelector("#suggestions");
     const scheduleCard = document.querySelector("#scheduleCard");
@@ -887,15 +1009,17 @@
     let activeSuggestion = -1;
     let currentSuggestions = [];
     let scheduleIcao = "";
+    let searchRequest = 0;
+    const quickPickButtons = [...document.querySelectorAll(".quick-pick")];
 
-    // Format provider timestamps for the visitor's locale and handle absent or malformed values.
+    // Format provider timestamps using the visitor's local date and time settings.
+    // If a provider sends an unusual timestamp, show its text rather than hiding it.
     function formatScheduleTime(value) {
       if (!value) return "Time unavailable";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? value.replace("T", " ") : date.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
     }
 
-    // Prefer a full airport name and city, falling back to the available station code.
     function scheduleAirportLabel(airport) {
       const code = airport?.iataCode || airport?.icaoCode || "";
       const name = airport?.name || "";
@@ -904,7 +1028,6 @@
       return code && name ? `${label} (${code})` : label;
     }
 
-    // Keep empty states specific to the selected movement tab.
     function scheduleEmptyMessage(type) {
       if (type === "schedule") {
         return "No arrivals or departures were recorded in ADSB.lol's last two-hour window.";
@@ -918,7 +1041,7 @@
       return "No flights were recorded in ADSB.lol's last two-hour window.";
     }
 
-    // Replace the movement list with either its empty state or the latest flight observations.
+    // Use textContent for provider values so they cannot be interpreted as HTML.
     function renderSchedule(flights, type) {
       scheduleList.replaceChildren();
       if (!flights.length) {
@@ -959,21 +1082,19 @@
       });
     }
 
-    // Load the selected movement type; the all-flights view requests both directions together.
+    // Ask the server for movements and redraw the list. The combined view requests
+    // arrivals and departures in parallel, then sorts them by the observation time.
     async function loadSchedule(type) {
       if (!scheduleIcao) return;
-      // Keep the tab highlight synchronized with the currently requested movement view.
-      scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === scheduleTabs[type === "schedule" ? 0 : type === "arrival" ? 1 : 2]));
+        scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === scheduleTabs[type === "schedule" ? 0 : type === "arrival" ? 1 : 2]));
 
       scheduleList.innerHTML = "<p class=\"schedule-message\">Loading live schedule...</p>";
       try {
         const movementTypes = type === "schedule" ? ["arrival", "departure"] : [type];
-        // Fetch arrival and departure data concurrently for the combined view.
         const results = await Promise.all(movementTypes.map(async movementType => {
           const response = await fetch(`/api/schedule/${scheduleIcao}/${movementType}`);
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "Could not load flight movements.");
-          // Attach the requested direction because both responses are merged below.
           return (Array.isArray(data.flights) ? data.flights : []).map(flight => ({ ...flight, movementType }));
         }));
         const flights = results.flat().sort((first, second) =>
@@ -990,12 +1111,10 @@
       }
     }
 
-    // Normalize user input before lookup and suggestion requests.
     function cleanSearch(value) {
       return value.trim().replace(/\s+/g, " ").slice(0, 80);
     }
 
-    // Clear suggestion results and reset keyboard-selection state.
     function hideSuggestions() {
       suggestions.replaceChildren();
       suggestions.classList.remove("visible");
@@ -1003,14 +1122,13 @@
       currentSuggestions = [];
     }
 
-    // Use the selected suggestion's full name in the same airport lookup flow.
     function selectSuggestion(airport) {
       input.value = airport.name;
       hideSuggestions();
       searchAirport(airport.name);
     }
 
-    // Turn each airport result into a keyboard-accessible, clickable suggestion.
+    // Build suggestions with text nodes so airport names are never treated as HTML.
     function showSuggestions(airports) {
       suggestions.replaceChildren();
       activeSuggestion = -1;
@@ -1033,7 +1151,8 @@
       suggestions.classList.toggle("visible", airports.length > 0);
     }
 
-    // Ignore stale suggestion responses so slow earlier queries cannot replace newer results.
+    // Request matching airports after the visitor types. A counter prevents an older,
+    // slower response from overwriting suggestions for the visitor's latest text.
     async function updateSuggestions() {
       const query = cleanSearch(input.value);
       const requestId = ++suggestionRequest;
@@ -1051,17 +1170,15 @@
       }
     }
 
-    // Create the base map and tile layer before any airport is selected.
+    // Start without a marker; showAirport adds one only after an airport is selected.
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
       L.tileLayer("/tiles/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
+        attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"
       }).addTo(map);
-      marker = L.marker([20, 0]).addTo(map);
     }
 
-    // Fill station details and move the map marker when the lookup resolves.
     function showAirport(airport) {
       airportCard.hidden = false;
       airportName.textContent = airport.name;
@@ -1074,8 +1191,19 @@
       const lat = Number(airport.lat);
       const lon = Number(airport.lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        marker.setLatLng([lat, lon]);
-        marker.bindPopup("<b>" + airport.icao + "</b><br>" + airport.name).openPopup();
+        if (!marker) {
+          marker = L.marker([lat, lon]).addTo(map);
+        } else {
+          marker.setLatLng([lat, lon]);
+        }
+
+        const popup = document.createElement("div");
+        const code = document.createElement("strong");
+        code.textContent = airport.icao;
+        const name = document.createElement("div");
+        name.textContent = airport.name;
+        popup.append(code, name);
+        marker.bindPopup(popup);
         map.flyTo([lat, lon], 10);
       }
 
@@ -1083,7 +1211,7 @@
       mapText.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
     }
 
-    // Apply standard VFR/MVFR/IFR/LIFR thresholds to the parsed ceiling and visibility.
+    // These are general category thresholds, not a substitute for official flight planning.
     function determineFlightCategory(ceiling, visibility) {
       // VFR: ceiling >= 3000 ft, visibility >= 5 sm
       // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
@@ -1098,8 +1226,15 @@
       return { category: "LIFR", class: "lifr", color: "#ff00ff" };
     }
 
-    // Extract the small set of METAR fields displayed in the at-a-glance summary.
-    function parseMetarData(decodedText) {
+    function numericValue(value) {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    // Prefer structured observation fields where available, then use the readable text
+    // as a fallback; the raw METAR itself remains available in the full-report view.
+    function parseMetarData(decodedText, observation = {}) {
       const data = {
         temp: "--",
         dewpoint: "--",
@@ -1152,14 +1287,128 @@
         data.altimeter = altMatch[1] + " inHg";
       }
 
+      if (numericValue(observation.temp) !== null) data.temp = String(observation.temp);
+      if (numericValue(observation.dewp) !== null) data.dewpoint = String(observation.dewp);
+      if (numericValue(observation.wdir) !== null && numericValue(observation.wspd) !== null) {
+        data.wind = `${observation.wdir}° @ ${observation.wspd} kt`;
+        if (numericValue(observation.wgst) !== null && Number(observation.wgst) > Number(observation.wspd)) {
+          data.wind += ` G${observation.wgst}`;
+        }
+      }
+      if (observation.visib) {
+        data.visibility = `${String(observation.visib).replace(/\\s*(SM|MILES?)$/i, "")} SM`;
+      }
+      const observedCeiling = Array.isArray(observation.clouds)
+        ? observation.clouds.find(cloud =>
+          ["BKN", "OVC", "VV"].includes(String(cloud.cover || "").toUpperCase()) && numericValue(cloud.base) !== null
+        )
+        : null;
+      if (observedCeiling) data.ceiling = `${observedCeiling.base} ft`;
+      if (numericValue(observation.altim) !== null) data.altimeter = `${observation.altim} inHg`;
+
       return data;
     }
 
-    // Update the visible summary and category using one decoded METAR response.
-    function showMetarSummary(decodedText) {
-      const metarData = parseMetarData(decodedText);
+    // Build a short plain-language summary from the weather data that was actually received.
+    // This uses fixed rules and templates; it does not send airport data to an AI service.
+    function generateFieldDispatch(metarData, airport, briefing) {
+      const category = determineFlightCategory(
+        Number.parseInt(metarData.ceiling, 10),
+        Number.parseFloat(metarData.visibility)
+      ).category;
+      const airportName = airport.name || airport.icao;
+      const location = airport.city ? `${airport.name}, ${airport.city}` : airportName;
+      const windSummary = metarData.wind === "--" ? "wind is not reported" : `surface wind is ${metarData.wind}`;
+      const visibilitySummary = metarData.visibility === "--" ? "visibility is not reported" : `visibility is ${metarData.visibility}`;
+      const outlook = [];
+
+      const temperature = Number(metarData.temp);
+      const dewpointValue = Number(metarData.dewpoint);
+      if (Number.isFinite(temperature) && Number.isFinite(dewpointValue)) {
+        const spread = temperature - dewpointValue;
+        if (spread <= 2.5) {
+          outlook.push(`the ${spread.toFixed(1)} °C temperature-dewpoint spread is tight, so low cloud or fog may form as the air cools`);
+        } else {
+          outlook.push(`the ${spread.toFixed(1)} °C temperature-dewpoint spread suggests lower immediate fog potential`);
+        }
+      }
+
+      const tafForecast = briefing.taf?.[0]?.fcsts?.[0];
+      if (tafForecast) {
+        const cloudLayers = Array.isArray(tafForecast.clouds) ? tafForecast.clouds : [];
+        const forecastCeiling = cloudLayers.find(layer =>
+          ["BKN", "OVC", "VV"].includes(String(layer.cover || "").toUpperCase())
+        )?.base;
+        const forecastVisibility = Number.parseFloat(tafForecast.visib);
+        if (Number.isFinite(Number(forecastCeiling)) || Number.isFinite(forecastVisibility)) {
+          const forecastCategory = determineFlightCategory(
+            Number(forecastCeiling),
+            forecastVisibility
+          ).category;
+          outlook.push(`the next TAF segment indicates ${forecastCategory} conditions`);
+        } else {
+          outlook.push("a current TAF is available for the forecast outlook");
+        }
+      } else if (briefing.errors?.taf) {
+        outlook.push("the latest TAF forecast could not be retrieved");
+      } else {
+        outlook.push("no current TAF was available");
+      }
+
+      const hourly = briefing.windsAloft?.hourly;
+      const windSpeed = hourly?.wind_speed_80m?.[0];
+      const windDirection = hourly?.wind_direction_80m?.[0];
+      if (Number.isFinite(Number(windSpeed)) && Number.isFinite(Number(windDirection))) {
+        outlook.push(`the first 80 m wind forecast is ${Math.round(Number(windSpeed))} km/h from ${Math.round(Number(windDirection))}°`);
+      }
+      if (Array.isArray(briefing.weatherAlerts) && briefing.weatherAlerts.length > 0) {
+        outlook.push(`${briefing.weatherAlerts.length} active Aviation Weather Center hazard bulletin${briefing.weatherAlerts.length === 1 ? " applies" : "s apply"} to the airport area`);
+      } else {
+        outlook.push("no active Aviation Weather Center hazard bulletin covers the airport");
+      }
+      if (briefing.faaStatus && !briefing.errors?.faaStatus) {
+        outlook.push("FAA NAS operational event data is available; confirm current restrictions on the official FAA dashboard");
+      }
+
+      return [
+        `${location}: ${category} conditions; ${windSummary}, and ${visibilitySummary}.`,
+        `${outlook.join("; ")}.`
+      ];
+    }
+
+    function updateMetricContext(metarData) {
+      const temperature = Number(metarData.temp);
+      const dewpointValue = Number(metarData.dewpoint);
+      const spread = temperature - dewpointValue;
+      tempContext.textContent = Number.isFinite(temperature)
+        ? `Air temperature at the field${temperature <= 0 ? " · freezing conditions" : ""}.`
+        : "Air temperature at the field.";
+      dewpointContext.textContent = Number.isFinite(spread)
+        ? `Spread ${spread.toFixed(1)} °C · ${spread <= 2.5 ? "fog or low cloud can form readily" : "lower fog potential for now"}.`
+        : "Moisture level in the air; a close temperature spread favors fog.";
+      windContext.textContent = metarData.wind === "--"
+        ? "Surface wind was not included in this report."
+        : "Direction is measured clockwise from north; gusts can affect handling.";
+
+      const visibilityValue = Number.parseFloat(metarData.visibility);
+      visibilityContext.textContent = Number.isFinite(visibilityValue)
+        ? `${visibilityValue >= 5 ? "Good visual range" : "Reduced visual range"} for pilots and drivers.`
+        : "Reported prevailing visibility near the airport.";
+
+      const ceilingValue = Number.parseInt(metarData.ceiling, 10);
+      ceilingContext.textContent = Number.isFinite(ceilingValue)
+        ? `${ceilingValue < 1000 ? "Low cloud base" : "Cloud-base height"} above the field.`
+        : "No broken or overcast ceiling reported.";
+
+      const pressure = Number.parseFloat(metarData.altimeter);
+      altimeterContext.textContent = Number.isFinite(pressure)
+        ? `${pressure < 29.92 ? "Below" : "At or above"} standard pressure · used to correct indicated altitude.`
+        : "Pressure setting used to correct indicated altitude.";
+    }
+
+    function showMetarSummary(decodedText, airport, briefing) {
+      const metarData = parseMetarData(decodedText, briefing.metar?.observation);
       
-      // Update display values
       temp.textContent = metarData.temp;
       dewpoint.textContent = metarData.dewpoint;
       wind.textContent = metarData.wind;
@@ -1167,13 +1416,35 @@
       ceiling.textContent = metarData.ceiling;
       altimeter.textContent = metarData.altimeter;
 
-      // Determine flight category
       const ceilingNum = parseInt(metarData.ceiling) || 5000;
       const visNum = parseFloat(metarData.visibility) || 10;
       const category = determineFlightCategory(ceilingNum, visNum);
 
       flightCategory.textContent = category.category;
       flightCategory.className = "flight-category " + category.class;
+      updateMetricContext(metarData);
+      fieldDispatch.replaceChildren();
+      generateFieldDispatch(metarData, airport, briefing).forEach(text => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = text;
+        fieldDispatch.append(paragraph);
+      });
+      if (
+        numericValue(briefing.windsAloft?.hourly?.wind_speed_80m?.[0]) !== null &&
+        numericValue(briefing.windsAloft?.hourly?.wind_direction_80m?.[0]) !== null
+      ) {
+        const attribution = document.createElement("p");
+        attribution.className = "dispatch-attribution";
+        const provider = document.createElement("a");
+        provider.href = "https://open-meteo.com/";
+        provider.textContent = "Weather data by Open-Meteo";
+        const separator = document.createTextNode(" · ");
+        const license = document.createElement("a");
+        license.href = "https://creativecommons.org/licenses/by/4.0/";
+        license.textContent = "CC BY 4.0";
+        attribution.append(provider, separator, license);
+        fieldDispatch.append(attribution);
+      }
 
       metarSummaryCard.hidden = false;
       toggleMetarBtn.hidden = false;
@@ -1181,53 +1452,60 @@
       toggleMetarBtn.textContent = "View Full METAR";
     }
 
-    // Resolve the airport first, then load its station weather and movement data.
+    // Ignore late responses from earlier searches so they cannot overwrite the latest result.
     async function searchAirport(query) {
+      const requestId = ++searchRequest;
       btn.disabled = true;
+      quickPickButtons.forEach(button => button.disabled = true);
       error.textContent = "";
-      // Hide the previous report while a new station is resolving.
       toggleMetarBtn.hidden = true;
       metarSummaryCard.hidden = true;
       document.getElementById("rawMetarCard").hidden = true;
       document.getElementById("decodedMetarCard").hidden = true;
       rawMetar.textContent = "Loading raw METAR...";
       decodedMetar.textContent = "Loading decoded METAR...";
-      let resolvedIcao = query;
 
       try {
         const airportRes = await fetch("/api/airport/" + encodeURIComponent(query));
         const airportData = await airportRes.json();
         if (!airportRes.ok) throw new Error(airportData.error || "Airport not found.");
-        resolvedIcao = airportData.airport.icao;
-        showAirport(airportData.airport);
-        scheduleIcao = airportData.airport.icao;
+        if (requestId !== searchRequest) return;
+        const airport = airportData.airport;
+        showAirport(airport);
+        scheduleIcao = airport.icao;
         scheduleCard.hidden = false;
-        scheduleSubtitle.textContent = airportData.airport.iata === "--"
+        scheduleSubtitle.textContent = airport.iata === "--"
           ? "Recent ADS-B movements"
-          : `Recent ADS-B movements for ${airportData.airport.iata}`;
+          : `Recent ADS-B movements for ${airport.iata}`;
         loadSchedule("schedule");
+
+        const briefingResponse = await fetch(`/api/briefing/${encodeURIComponent(airport.icao)}`);
+        const briefing = await briefingResponse.json();
+        if (!briefingResponse.ok) throw new Error(briefing.error || "Could not load airport briefing.");
+        if (requestId !== searchRequest) return;
+        if (!briefing.metar?.decoded) {
+          throw new Error(briefing.errors?.metar || "Could not load METAR.");
+        }
+        rawMetar.textContent = briefing.metar.raw || "No raw METAR found.";
+        decodedMetar.textContent = briefing.metar.decoded;
+        showMetarSummary(briefing.metar.decoded, airport, briefing);
       } catch (err) {
-        error.textContent = err.message;
+        if (requestId === searchRequest) {
+          error.textContent = err.message;
+          rawMetar.textContent = "Could not load raw METAR.";
+          decodedMetar.textContent = "Could not load decoded METAR.";
+          metarSummaryCard.hidden = true;
+        }
+      } finally {
+        if (requestId === searchRequest) {
+          btn.disabled = false;
+          quickPickButtons.forEach(button => button.disabled = false);
+        }
       }
-
-      try {
-        const metarRes = await fetch("/api/metar/" + encodeURIComponent(resolvedIcao));
-        const metarData = await metarRes.json();
-        rawMetar.textContent = metarData.raw || "No raw METAR found.";
-        decodedMetar.textContent = metarData.decoded || "No decoded METAR found.";
-        showMetarSummary(metarData.decoded || "");
-      } catch {
-        rawMetar.textContent = "Could not load raw METAR.";
-        decodedMetar.textContent = "Could not load decoded METAR.";
-        metarSummaryCard.hidden = true;
-      }
-
-      btn.disabled = false;
     }
 
     const isFileProtocol = window.location.protocol === "file:";
 
-    // Explain why API-backed features need the site to be served over HTTP.
     function showServeError() {
       error.textContent = "Start the app with \"npm start\" and open it through the local server instead of using index.html directly.";
       rawMetar.textContent = "Run the local server to use the METAR lookup.";
@@ -1243,7 +1521,6 @@
       showServeError();
     }
 
-    // Form and keyboard handlers preserve mouse-free search and suggestion selection.
     form.addEventListener("submit", event => {
       event.preventDefault();
       if (isFileProtocol) {
@@ -1260,6 +1537,14 @@
       hideSuggestions();
     });
 
+    quickPickButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        input.value = button.dataset.icao;
+        hideSuggestions();
+        searchAirport(button.dataset.icao);
+      });
+    });
+
     input.addEventListener("input", updateSuggestions);
     input.addEventListener("keydown", event => {
       const items = suggestions.querySelectorAll(".suggestion");
@@ -1268,7 +1553,6 @@
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         activeSuggestion = (activeSuggestion + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
-        // Keep exactly one visible suggestion highlighted as the user presses an arrow key.
         items.forEach((item, index) => item.classList.toggle("active", index === activeSuggestion));
         items[activeSuggestion].scrollIntoView({ block: "nearest" });
       } else if (event.key === "Enter" && activeSuggestion >= 0) {

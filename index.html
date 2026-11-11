@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FlightWeather</title>
+  <meta name="theme-color" content="#F2EFE9">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
+    /* This older standalone page is kept separate from the primary public/index.html app. */
     * {
       box-sizing: border-box;
     }
@@ -312,6 +315,7 @@
         <h3>Decoded METAR</h3>
         <pre id="decodedMetar">Search an airport.</pre>
       </section>
+      <p><a href="/credits.html">Credits, privacy &amp; cookies</a></p>
     </section>
 
     <section class="map-wrap">
@@ -358,13 +362,13 @@
       return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
     }
 
+    // Start Leaflet with a world view; no airport marker is shown until a search succeeds.
     function initMap() {
       map = L.map("map").setView([20, 0], 2);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors"
+        attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"
       }).addTo(map);
-      marker = L.marker([20, 0]).addTo(map);
     }
 
     function showAirport(airport) {
@@ -379,8 +383,19 @@
       const lat = Number(airport.lat);
       const lon = Number(airport.lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        marker.setLatLng([lat, lon]);
-        marker.bindPopup("<b>" + airport.icao + "</b><br>" + airport.name).openPopup();
+        if (!marker) {
+          marker = L.marker([lat, lon]).addTo(map);
+        } else {
+          marker.setLatLng([lat, lon]);
+        }
+
+        const popup = document.createElement("div");
+        const code = document.createElement("strong");
+        code.textContent = airport.icao;
+        const name = document.createElement("div");
+        name.textContent = airport.name;
+        popup.append(code, name);
+        marker.bindPopup(popup);
         map.flyTo([lat, lon], 10);
       }
 
@@ -388,10 +403,11 @@
       mapText.textContent = [airport.city, airport.country].filter(Boolean).join(", ");
     }
 
+    // Apply the usual ceiling and visibility thresholds for a quick flight-category summary.
     function determineFlightCategory(ceiling, visibility) {
       // VFR: ceiling >= 3000 ft, visibility >= 5 sm
       // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
-      // IFVR: ceiling 500-999 ft, visibility 1-2 sm
+      // IFR: ceiling 500-999 ft, visibility 1-2 sm
       // LIFR: ceiling < 500 ft, visibility < 1 sm
       const vis = visibility || 10;
       const cig = ceiling || 5000;
@@ -402,6 +418,7 @@
       return { category: "LIFR", class: "lifr", color: "#ff00ff" };
     }
 
+    // This fallback page decodes only the values displayed in its summary cards.
     function parseMetarData(decodedText) {
       const data = {
         temp: "--",
@@ -414,18 +431,15 @@
 
       if (!decodedText) return data;
 
-      // Parse Temperature and Dewpoint
       const tempMatch = decodedText.match(/Temperature: ([-\d.]+)°C.*Dewpoint: ([-\d.]+)°C/);
       if (tempMatch) {
         data.temp = tempMatch[1];
         data.dewpoint = tempMatch[2];
       }
 
-      // Parse Wind
       const windMatch = decodedText.match(/Wind: (.*?)(?:Visibility|Altimeter|Ceiling|$)/);
       if (windMatch) {
         let windStr = windMatch[1].trim();
-        // Simplify wind info to just speed and direction
         const speedMatch = windStr.match(/(\d+)\s*kt/);
         const dirMatch = windStr.match(/from\s*([A-Z]+|\d+)°?/);
         if (speedMatch && dirMatch) {
@@ -437,25 +451,21 @@
         }
       }
 
-      // Parse Visibility
       const visMatch = decodedText.match(/Visibility: ([\d.]+)\s*(?:miles|km|SM)/);
       if (visMatch) {
         data.visibility = visMatch[1] + " SM";
       }
 
-      // Parse Ceiling (first cloud layer that's broken or overcast)
       const ceilingMatch = decodedText.match(/ceiling\s+(\d+)\s*ft/i);
       if (ceilingMatch) {
         data.ceiling = ceilingMatch[1] + " ft";
       } else {
-        // Try to find first significant cloud layer
         const cloudMatch = decodedText.match(/(?:OVC|BKN)\s+(\d+)/);
         if (cloudMatch) {
           data.ceiling = cloudMatch[1] + " ft";
         }
       }
 
-      // Parse Altimeter
       const altMatch = decodedText.match(/Altimeter:\s*([\d.]+)\s*(?:inHg|in)/);
       if (altMatch) {
         data.altimeter = altMatch[1] + " inHg";
@@ -467,7 +477,6 @@
     function showMetarSummary(decodedText) {
       const metarData = parseMetarData(decodedText);
       
-      // Update display values
       temp.textContent = metarData.temp;
       dewpoint.textContent = metarData.dewpoint;
       wind.textContent = metarData.wind;
@@ -475,7 +484,6 @@
       ceiling.textContent = metarData.ceiling;
       altimeter.textContent = metarData.altimeter;
 
-      // Determine flight category
       const ceilingNum = parseInt(metarData.ceiling) || 5000;
       const visNum = parseFloat(metarData.visibility) || 10;
       const category = determineFlightCategory(ceilingNum, visNum);
@@ -518,6 +526,7 @@
       btn.disabled = false;
     }
 
+    // Browser security blocks the API calls when this page is opened directly as a file.
     const isFileProtocol = window.location.protocol === "file:";
 
     function showServeError() {

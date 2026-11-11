@@ -1,13 +1,91 @@
+// Mirrors server.js; the request and asset handlers differ between Node and Cloudflare.
+// Public data endpoints used by the site. These feeds do not require private API keys.
 const AIRPORTS_CSV = "https://davidmegginson.github.io/ourairports-data/airports.csv";
+const RUNWAYS_CSV = "https://davidmegginson.github.io/ourairports-data/runways.csv";
 const METAR_API = "https://aviationweather.gov/api/data/metar";
+const TAF_API = "https://aviationweather.gov/api/data/taf";
+const PIREP_API = "https://aviationweather.gov/api/data/pirep";
+const AIRSIGMET_API = "https://aviationweather.gov/api/data/airsigmet";
 const ADSB_API = "https://api.adsb.lol";
-const ADSB_RADIUS_NM = 30;
+const OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast";
+const FAA_STATUS_API = "https://nasstatus.faa.gov/api/airport-events";
+const ADSB_RADIUS_NM = 25;
 const SCHEDULE_CACHE_MS = 120000;
+const AWC_CACHE_MS = 60000;
+const ADSB_CACHE_MS = 15000;
+const OPEN_METEO_CACHE_MS = 900000;
+const AIRPORT_DATA_CACHE_MS = 86400000;
+const FAA_CACHE_MS = 60000;
+const OSM_TILE_FALLBACK_CACHE_SECONDS = 604800;
 const TILE_SERVER = "https://tile.openstreetmap.org";
 const MAX_TILE_ZOOM = 19;
 
+// Cloudflare Workers keep these caches only for the lifetime of the running isolate.
+// They still prevent duplicate downloads while the same Worker instance is handling requests.
 let airportCache = null;
+let airportCacheTimestamp = 0;
 const scheduleCache = new Map();
+const providerCache = new Map();
+
+async function getCached(cacheKey, ttl, load) {
+  const cached = providerCache.get(cacheKey);
+  if (cached?.promise) return cached.promise;
+  if (cached && Date.now() - cached.timestamp < ttl) return cached.value;
+
+  const promise = Promise.resolve().then(load).then(value => {
+    providerCache.set(cacheKey, { timestamp: Date.now(), value });
+    return value;
+  }, error => {
+    providerCache.delete(cacheKey);
+    throw error;
+  });
+  providerCache.set(cacheKey, { timestamp: Date.now(), promise });
+  return promise;
+}
+
+function providerHeaders() {
+  return {
+    "User-Agent": "FlightWeather/1.0 (+https://flightweather.org/)",
+    Accept: "application/json"
+  };
+}
+
+async function fetchProviderJson(url, label) {
+  const response = await fetch(url, { headers: providerHeaders() });
+  if (response.status === 204 || response.status === 404) return null;
+  if (!response.ok) throw new Error(`${label} data unavailable (${response.status}).`);
+  return response.json();
+}
+
+// Normalize provider responses that may contain one record, a list, or a data list.
+function asRecordList(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (value && typeof value === "object") return [value];
+  return [];
+}
+
+// A missing measurement is different from zero (for example, calm wind).
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+// Send API data as JSON with the site's standard safety and caching headers.
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
+    }
+  });
+}
 
 function cleanIcao(value) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
@@ -23,9 +101,10 @@ function cleanAirportQuery(value) {
     // Keep malformed input routable so it can produce a normal not-found response.
   }
 
-  return decodedValue.trim().replace(/\s+/g, " ");
+  return decodedValue.trim().replace(/\s+/g, " ").slice(0, 80);
 }
 
+// Parse one CSV row without splitting commas that appear inside quoted values.
 function parseCsvLine(line) {
   const out = [];
   let value = "";
@@ -53,9 +132,9 @@ function parseCsvLine(line) {
 }
 
 async function loadAirports() {
-  if (airportCache) return airportCache;
+  if (airportCache && Date.now() - airportCacheTimestamp < AIRPORT_DATA_CACHE_MS) return airportCache;
 
-  const response = await fetch(AIRPORTS_CSV);
+  const response = await fetch(AIRPORTS_CSV, { headers: providerHeaders() });
   if (!response.ok) throw new Error("Could not load airport database.");
 
   const csv = await response.text();
@@ -81,6 +160,7 @@ async function loadAirports() {
   }
 
   airportCache = airports;
+  airportCacheTimestamp = Date.now();
   return airportCache;
 }
 
@@ -89,6 +169,7 @@ async function getAirport(icao) {
   return airports.get(icao) || null;
 }
 
+// Search by exact airport code first, then by airport name, city, or IATA code.
 async function findAirport(query) {
   const airports = await loadAirports();
   const normalizedQuery = query.toLowerCase();
@@ -129,17 +210,165 @@ async function findAirports(query, limit = 8) {
 }
 
 async function getMetar(icao) {
-  const url = `${METAR_API}?ids=${encodeURIComponent(icao)}&format=decoded`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Could not load METAR.");
+  return getCached(`metar:${icao}`, AWC_CACHE_MS, async () => {
+    const url = `${METAR_API}?ids=${encodeURIComponent(icao)}&format=json`;
+    const observations = asRecordList(await fetchProviderJson(url, "METAR"));
+    const observation = observations[0];
+    if (!observation) throw new Error("No METAR found for this airport.");
 
-  const decoded = await response.text();
-  if (!decoded.trim()) throw new Error("No METAR found for this airport.");
-  const rawMatch = decoded.match(/Text:\s*(.+)/);
-  return {
-    raw: rawMatch ? rawMatch[1].trim() : decoded.trim(),
-    decoded: decoded.trim()
+    const raw = String(observation.rawOb || observation.raw || "").trim();
+    const decodedLines = [];
+    if (numberOrNull(observation.temp) !== null) decodedLines.push(`Temperature: ${observation.temp}C`);
+    if (numberOrNull(observation.dewp) !== null) decodedLines.push(`Dewpoint: ${observation.dewp}C`);
+    if (numberOrNull(observation.wdir) !== null && numberOrNull(observation.wspd) !== null) {
+      decodedLines.push(`Winds: from ${observation.wdir} degrees at ${observation.wspd} knots`);
+    }
+    if (observation.visib) decodedLines.push(`Visibility: ${observation.visib} SM`);
+    const ceiling = asRecordList(observation.clouds).find(cloud =>
+      ["BKN", "OVC", "VV"].includes(String(cloud.cover || "").toUpperCase()) && numberOrNull(cloud.base) !== null
+    );
+    if (ceiling) decodedLines.push(`Ceiling ${ceiling.base} ft`);
+    if (observation.altim) decodedLines.push(`Altimeter: ${observation.altim} inches Hg`);
+    return {
+      raw,
+      decoded: [raw, ...decodedLines].filter(Boolean).join("\n"),
+      observation
+    };
+  });
+}
+
+async function getTaf(icao) {
+  return getCached(`taf:${icao}`, AWC_CACHE_MS, async () => {
+    const url = `${TAF_API}?ids=${encodeURIComponent(icao)}&format=json`;
+    return asRecordList(await fetchProviderJson(url, "TAF")).slice(0, 10);
+  });
+}
+
+// The provider's distance parameter is in nautical miles.
+async function getPireps(icao) {
+  return getCached(`pirep:${icao}`, AWC_CACHE_MS, async () => {
+    const url = `${PIREP_API}?id=${encodeURIComponent(icao)}&distance=40&format=json`;
+    return asRecordList(await fetchProviderJson(url, "Pilot reports")).slice(0, 100);
+  });
+}
+
+function isPointInPolygon(point, polygon) {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const [longitude, latitude] = polygon[index] || [];
+    const [previousLongitude, previousLatitude] = polygon[previous] || [];
+    if (![longitude, latitude, previousLongitude, previousLatitude].every(Number.isFinite)) continue;
+
+    const crossesLatitude = (latitude > point.lat) !== (previousLatitude > point.lat);
+    const crossingLongitude =
+      ((previousLongitude - longitude) * (point.lat - latitude)) /
+        (previousLatitude - latitude) +
+      longitude;
+    if (crossesLatitude && point.lon < crossingLongitude) inside = !inside;
+  }
+  return inside;
+}
+
+async function getWeatherAlerts(airport) {
+  const alerts = await getCached("airsigmet:active", AWC_CACHE_MS, async () => {
+    const url = `${AIRSIGMET_API}?format=json`;
+    return asRecordList(await fetchProviderJson(url, "Aviation weather alerts"));
+  });
+  const point = { lat: numberOrNull(airport.lat), lon: numberOrNull(airport.lon) };
+  if (point.lat === null || point.lon === null) return [];
+
+  return alerts.filter(alert => {
+    const coordinates = Array.isArray(alert.coords)
+      ? alert.coords.map(coordinate => [numberOrNull(coordinate.lon), numberOrNull(coordinate.lat)])
+      : [];
+    return coordinates.length >= 3 && isPointInPolygon(point, coordinates);
+  });
+}
+
+async function getTraffic(airport) {
+  return getCached(`traffic:${airport.icao}`, ADSB_CACHE_MS, async () => {
+    const url = `${ADSB_API}/v2/point/${airport.lat}/${airport.lon}/${ADSB_RADIUS_NM}`;
+    const payload = await fetchProviderJson(url, "Live aircraft");
+    return { ac: Array.isArray(payload?.ac) ? payload.ac.slice(0, 200) : [] };
+  });
+}
+
+async function getWindsAloft(airport) {
+  return getCached(`winds:${airport.icao}`, OPEN_METEO_CACHE_MS, async () => {
+    const url = new URL(OPEN_METEO_API);
+    url.search = new URLSearchParams({
+      latitude: airport.lat,
+      longitude: airport.lon,
+      hourly: "wind_speed_80m,wind_direction_80m,freezing_level_height",
+      daily: "sunrise,sunset",
+      timezone: "auto",
+      forecast_days: "1"
+    }).toString();
+    return fetchProviderJson(url, "Winds aloft");
+  });
+}
+
+async function getAirportRunways(icao) {
+  const runways = await getCached("runways:all", AIRPORT_DATA_CACHE_MS, async () => {
+    const response = await fetch(RUNWAYS_CSV, { headers: providerHeaders() });
+    if (!response.ok) throw new Error(`Runway data unavailable (${response.status}).`);
+    const lines = (await response.text()).split(/\r?\n/).filter(Boolean);
+    const headers = parseCsvLine(lines.shift() || "");
+    const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
+
+    return lines.map(line => {
+      const row = parseCsvLine(line);
+      return {
+        airportIdent: String(row[indexes.airport_ident] || "").toUpperCase(),
+        lowIdent: row[indexes.le_ident] || "",
+        highIdent: row[indexes.he_ident] || "",
+        lowHeadingDeg: numberOrNull(row[indexes.le_heading_degT]),
+        highHeadingDeg: numberOrNull(row[indexes.he_heading_degT]),
+        lengthFt: numberOrNull(row[indexes.length_ft]),
+        surface: row[indexes.surface] || ""
+      };
+    });
+  });
+  return runways.filter(runway => runway.airportIdent === icao);
+}
+
+// The FAA airport-events feed covers U.S. airports only.
+async function getFaaStatus(icao) {
+  if (!icao.startsWith("K")) return null;
+  return getCached("faa:airport-events", FAA_CACHE_MS, async () => {
+    const response = await fetch(FAA_STATUS_API, { headers: providerHeaders() });
+    if (!response.ok) throw new Error(`FAA NAS status unavailable (${response.status}).`);
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("json")) return response.json();
+    return response.text();
+  });
+}
+
+// Successful source data and readable errors are returned together to the browser.
+async function getBriefing(airport) {
+  const sources = {
+    metar: () => getMetar(airport.icao),
+    taf: () => getTaf(airport.icao),
+    pireps: () => getPireps(airport.icao),
+    weatherAlerts: () => getWeatherAlerts(airport),
+    traffic: () => getTraffic(airport),
+    windsAloft: () => getWindsAloft(airport),
+    runways: () => getAirportRunways(airport.icao),
+    faaStatus: () => getFaaStatus(airport.icao)
   };
+  const entries = Object.entries(sources);
+  const results = await Promise.allSettled(entries.map(([, load]) => load()));
+  const briefing = { airport, errors: {} };
+
+  results.forEach((result, index) => {
+    const key = entries[index][0];
+    if (result.status === "fulfilled") {
+      briefing[key] = result.value;
+    } else {
+      briefing.errors[key] = result.reason instanceof Error ? result.reason.message : "Source unavailable.";
+    }
+  });
+  return briefing;
 }
 
 function toDegrees(value) {
@@ -190,24 +419,18 @@ function classifyAdsbMovement(airport, aircraft) {
   return null;
 }
 
-async function getSchedule(airport, type, username, password) {
+async function getSchedule(airport, type) {
   const cacheKey = `${airport.icao}:${type}`;
   const cached = scheduleCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < SCHEDULE_CACHE_MS) return cached.flights;
 
-  const scheduleUrl = new URL(`${ADSB_API}/v2/point/${airport.lat}/${airport.lon}/${ADSB_RADIUS_NM}`);
-  const response = await fetch(scheduleUrl);
-  if (response.status === 404) {
-    scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: [] });
-    return [];
-  }
-  if (response.status === 429) {
+  let payload;
+  try {
+    payload = await getTraffic(airport);
+  } catch (error) {
     if (cached) return cached.flights;
-    throw new Error("ADSB.lol rate limit reached. Try again later.");
+    throw error;
   }
-  if (!response.ok) throw new Error("Could not load ADSB.lol flight movements.");
-
-  const payload = await response.json();
   const flights = Array.isArray(payload.ac) ? payload.ac : [];
   const normalizedFlights = flights
     .map(aircraft => {
@@ -260,6 +483,13 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
 
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response("Method not allowed", {
+        status: 405,
+        headers: { Allow: "GET, HEAD", "X-Content-Type-Options": "nosniff" }
+      });
+    }
+
     // API: Get airport info
     if (pathname.startsWith("/api/airport/")) {
       const query = cleanAirportQuery(pathname.split("/").pop());
@@ -267,51 +497,37 @@ export default {
       try {
         const airport = await findAirport(query);
         if (!airport) {
-          return new Response(JSON.stringify({ error: `No airport found for ${query}` }), {
-            status: 404,
-            headers: { 
-              "Content-Type": "application/json; charset=utf-8",
-              "Access-Control-Allow-Origin": "*"
-            }
-          });
+          return jsonResponse({ error: `No airport found for ${query}` }, 404);
         }
-        return new Response(JSON.stringify({ airport }), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json; charset=utf-8",
-            "Access-Control-Allow-Origin": "*"
-          }
-        });
+        return jsonResponse({ airport });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json; charset=utf-8",
-            "Access-Control-Allow-Origin": "*"
-          }
-        });
+        return jsonResponse({ error: err.message }, 500);
       }
     }
 
     // API: Search airports for autocomplete suggestions
     if (pathname === "/api/airports") {
       const query = cleanAirportQuery(url.searchParams.get("query"));
-      if (query.length < 3) return new Response(JSON.stringify({ airports: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-      });
+      if (query.length < 3) return jsonResponse({ airports: [] });
 
       try {
         const airports = await findAirports(query);
-        return new Response(JSON.stringify({ airports }), {
-          status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-        });
+        return jsonResponse({ airports });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-        });
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    if (pathname.startsWith("/api/briefing/")) {
+      const icao = cleanIcao(pathname.split("/").pop());
+      if (icao.length !== 4) return jsonResponse({ error: "Enter a valid four-character ICAO code." }, 400);
+
+      try {
+        const airport = await getAirport(icao);
+        if (!airport) return jsonResponse({ error: "Airport not found." }, 404);
+        return jsonResponse(await getBriefing(airport));
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 502);
       }
     }
 
@@ -321,21 +537,9 @@ export default {
 
       try {
         const metar = await getMetar(icao);
-        return new Response(JSON.stringify(metar), {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json; charset=utf-8",
-            "Access-Control-Allow-Origin": "*"
-          }
-        });
+        return jsonResponse(metar);
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 
-            "Content-Type": "application/json; charset=utf-8",
-            "Access-Control-Allow-Origin": "*"
-          }
-        });
+        return jsonResponse({ error: err.message }, 500);
       }
     }
 
@@ -344,30 +548,18 @@ export default {
       const [, , , icaoCode, type] = pathname.split("/");
       const normalizedIcao = cleanIcao(icaoCode);
       if (!normalizedIcao || !["arrival", "departure"].includes(type)) {
-        return new Response(JSON.stringify({ error: "Invalid schedule request." }), {
-          status: 400,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-        });
+        return jsonResponse({ error: "Invalid schedule request." }, 400);
       }
 
       try {
         const airport = await getAirport(normalizedIcao);
         if (!airport) {
-          return new Response(JSON.stringify({ error: "Airport not found." }), {
-            status: 404,
-            headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-          });
+          return jsonResponse({ error: "Airport not found." }, 404);
         }
-        const flights = await getSchedule(airport, type, env.OPENSKY_USERNAME, env.OPENSKY_PASSWORD);
-        return new Response(JSON.stringify({ flights }), {
-          status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-        });
+        const flights = await getSchedule(airport, type);
+        return jsonResponse({ flights });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 502,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" }
-        });
+        return jsonResponse({ error: err.message }, 502);
       }
     }
 
@@ -410,7 +602,7 @@ export default {
               status: 200,
               headers: {
                 "Content-Type": "image/png",
-                "Cache-Control": response.headers.get("Cache-Control") || "public, max-age=3600"
+                "Cache-Control": response.headers.get("Cache-Control") || `public, max-age=${OSM_TILE_FALLBACK_CACHE_SECONDS}`
               }
             });
             ctx.waitUntil(tileCache.put(request, tileResponse.clone()));
@@ -422,7 +614,7 @@ export default {
       }
     }
 
-    // Serve static files from assets - be explicit about file types
+    // Unknown extensionless paths use the homepage for the site's page routes.
     const hasExtension = /\.[a-zA-Z0-9]+$/.test(pathname);
     if (pathname === "/" || pathname === "/index.html" || hasExtension) {
       try {

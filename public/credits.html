@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="FlightWeather project credits, data sources, privacy, and cookie information.">
+  <meta name="theme-color" content="#1e2522">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Credits & Privacy — FlightWeather</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f2efe9;
+      --card: #fff;
+      --ink: #1e2522;
+      --muted: #5a625e;
+      --terracotta: #c85a32;
+      --terracotta-soft: #f7eae4;
+      --line: rgba(30, 37, 34, 0.18);
+      --serif: "Instrument Serif", "Playfair Display", Georgia, serif;
+      --sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse at 50% 2%, rgba(200, 90, 50, 0.12), transparent 36rem),
+        var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+      text-decoration-color: rgba(200, 90, 50, 0.55);
+      text-underline-offset: 3px;
+    }
+
+    a:hover {
+      color: var(--terracotta);
+    }
+
+    a:focus-visible {
+      outline: 2px solid var(--terracotta);
+      outline-offset: 4px;
+    }
+
+    .page {
+      margin: 0 auto;
+      max-width: 1240px;
+      padding: 22px clamp(18px, 5vw, 64px) 72px;
+    }
+
+    .topbar {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0 24px;
+    }
+
+    .wordmark {
+      align-items: center;
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 800;
+      gap: 10px;
+      letter-spacing: 0.13em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .brand-mark {
+      border: 1px solid var(--ink);
+      display: inline-grid;
+      height: 20px;
+      place-items: center;
+      transform: rotate(45deg);
+      width: 20px;
+    }
+
+    .brand-mark::after {
+      background: var(--terracotta);
+      content: "";
+      height: 7px;
+      width: 7px;
+    }
+
+    .back-link,
+    .eyebrow,
+    .tag,
+    .hero-index,
+    .source-type,
+    .footer-note {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .back-link {
+      border-bottom: 1px solid var(--ink);
+      padding-bottom: 5px;
+      text-decoration: none;
+    }
+
+    .hero {
+      align-items: center;
+      background:
+        radial-gradient(ellipse at 80% 34%, rgba(200, 90, 50, 0.2), transparent 31%),
+        linear-gradient(132deg, #29332f, #1e2522 62%, #171e1c);
+      border: 1px solid #111815;
+      box-shadow: 0 26px 0 -12px rgba(30, 37, 34, 0.12), 0 44px 70px -38px rgba(30, 37, 34, 0.52);
+      color: #f2efe9;
+      display: grid;
+      gap: 30px;
+      grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+      isolation: isolate;
+      min-height: 390px;
+      overflow: hidden;
+      padding: clamp(30px, 6vw, 70px);
+      position: relative;
+      transform: perspective(1100px) rotateX(1deg);
+      transform-style: preserve-3d;
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      pointer-events: none;
+      position: absolute;
+      z-index: -1;
+    }
+
+    .hero::before {
+      background: repeating-linear-gradient(0deg, transparent 0 38px, rgba(242, 239, 233, 0.055) 39px 40px);
+      inset: 0;
+      mask-image: linear-gradient(90deg, transparent, #000 65%);
+    }
+
+    .hero::after {
+      border: 1px solid rgba(242, 239, 233, 0.13);
+      bottom: 23px;
+      left: 23px;
+      right: 23px;
+      top: 23px;
+      transform: translateZ(-12px);
+    }
+
+    .hero-copy {
+      max-width: 570px;
+      position: relative;
+      transform: translateZ(32px);
+      z-index: 1;
+    }
+
+    .eyebrow {
+      color: #e7a084;
+      margin: 0 0 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-size: clamp(56px, 8vw, 94px);
+      font-weight: 400;
+      letter-spacing: -0.065em;
+      line-height: 0.9;
+      margin-bottom: 22px;
+    }
+
+    .hero-copy > p:last-child {
+      color: #c4c9c1;
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 0;
+      max-width: 450px;
+    }
+
+    .orbit-stage {
+      align-items: center;
+      display: grid;
+      min-height: 245px;
+      perspective: 700px;
+      place-items: center;
+      position: relative;
+      transform: translateZ(24px);
+    }
+
+    .globe {
+      animation: globe-turn 24s linear infinite;
+      aspect-ratio: 1;
+      border: 1px solid rgba(242, 239, 233, 0.45);
+      border-radius: 50%;
+      box-shadow: inset -26px -8px 45px rgba(0, 0, 0, 0.38), 0 24px 46px rgba(0, 0, 0, 0.3);
+      height: min(230px, 54vw);
+      max-height: 230px;
+      overflow: hidden;
+      position: relative;
+      transform: rotateX(16deg) rotateY(-16deg);
+      transform-style: preserve-3d;
+      width: min(230px, 54vw);
+    }
+
+    .globe::before,
+    .globe::after {
+      border: 1px solid rgba(242, 239, 233, 0.31);
+      border-radius: 50%;
+      content: "";
+      inset: 8% 25%;
+      position: absolute;
+    }
+
+    .globe::after {
+      inset: 25% 7%;
+      transform: rotate(90deg);
+    }
+
+    .globe-grid {
+      background:
+        linear-gradient(25deg, transparent 43%, rgba(200, 90, 50, 0.95) 43.5% 44%, transparent 44.5%),
+        repeating-linear-gradient(0deg, transparent 0 28px, rgba(242, 239, 233, 0.18) 29px 30px),
+        repeating-linear-gradient(90deg, transparent 0 28px, rgba(242, 239, 233, 0.15) 29px 30px),
+        radial-gradient(circle at 34% 30%, #66746b, #36453e 55%, #202a26 80%);
+      border-radius: 50%;
+      inset: -2px;
+      position: absolute;
+    }
+
+    .orbit {
+      border: 1px solid rgba(231, 160, 132, 0.8);
+      border-radius: 50%;
+      height: 270px;
+      position: absolute;
+      transform: rotate(-24deg) rotateX(68deg);
+      width: 320px;
+    }
+
+    .orbit::after {
+      background: #e7a084;
+      border: 4px solid #29332f;
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(231, 160, 132, 0.8);
+      content: "";
+      height: 10px;
+      position: absolute;
+      right: 20px;
+      top: 42px;
+      width: 10px;
+    }
+
+    .hero-index {
+      bottom: 29px;
+      color: #b6bdb5;
+      position: absolute;
+      right: 31px;
+    }
+
+    .contents {
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      border-top: 1px solid var(--line);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      margin: 38px 0 26px;
+      padding: 14px 0;
+    }
+
+    .contents span {
+      color: var(--muted);
+      font: 9px var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .contents a {
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .section-heading {
+      align-items: end;
+      display: flex;
+      gap: 20px;
+      justify-content: space-between;
+      margin: 62px 0 20px;
+    }
+
+    .section-heading .eyebrow {
+      color: var(--terracotta);
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-family: var(--serif);
+      font-size: clamp(34px, 5vw, 48px);
+      font-weight: 400;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 0;
+    }
+
+    .section-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      margin: 0;
+      max-width: 260px;
+      text-align: right;
+    }
+
+    .source-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      perspective: 1200px;
+    }
+
+    .source-card,
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--ink);
+      box-shadow: 7px 7px 0 rgba(30, 37, 34, 0.11), 0 16px 30px -23px rgba(30, 37, 34, 0.46);
+      transform: perspective(900px) rotateX(0deg) rotateY(0deg) translateZ(0);
+      transform-style: preserve-3d;
+      transition: box-shadow 220ms ease, transform 220ms ease;
+    }
+
+    .source-card {
+      min-height: 190px;
+      padding: 23px;
+    }
+
+    .source-card:hover,
+    .info-card:hover {
+      box-shadow: 12px 15px 0 rgba(30, 37, 34, 0.12), 0 26px 38px -27px rgba(30, 37, 34, 0.5);
+      transform: perspective(900px) rotateX(1.5deg) rotateY(-1deg) translate3d(0, -4px, 16px);
+    }
+
+    .source-card:nth-child(even):hover {
+      transform: perspective(900px) rotateX(1.5deg) rotateY(1deg) translate3d(0, -4px, 16px);
+    }
+
+    .source-topline {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .source-type,
+    .tag {
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .source-number {
+      align-items: center;
+      background: var(--terracotta-soft);
+      border: 1px solid rgba(200, 90, 50, 0.26);
+      border-radius: 50%;
+      color: var(--terracotta);
+      display: grid;
+      font: 10px var(--mono);
+      height: 29px;
+      place-items: center;
+      width: 29px;
+    }
+
+    .source-card h3,
+    .info-card h3 {
+      font-family: var(--serif);
+      font-size: 24px;
+      font-weight: 400;
+      letter-spacing: -0.025em;
+      margin-bottom: 8px;
+    }
+
+    .source-card p,
+    .info-card p,
+    .info-card li {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .source-card p {
+      margin-bottom: 13px;
+      max-width: 500px;
+    }
+
+    .source-link {
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .info-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      perspective: 1200px;
+    }
+
+    .info-card {
+      padding: clamp(22px, 4vw, 34px);
+    }
+
+    .info-card.wide {
+      grid-column: 1 / -1;
+    }
+
+    .info-card h3 {
+      font-size: 29px;
+      margin-bottom: 14px;
+    }
+
+    .info-card p:last-child,
+    .info-card ul:last-child {
+      margin-bottom: 0;
+    }
+
+    .info-card ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    .callout {
+      background: #f7f5ef;
+      border-left: 2px solid var(--terracotta);
+      padding: 12px 14px;
+    }
+
+    .date-stamp {
+      color: var(--muted);
+      font: 9px var(--mono);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .footer {
+      align-items: center;
+      border-top: 1px solid var(--ink);
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      font-size: 10px;
+      gap: 12px 20px;
+      justify-content: space-between;
+      margin-top: 64px;
+      padding-top: 17px;
+    }
+
+    .footer-note {
+      font-size: 9px;
+    }
+
+    @keyframes globe-turn {
+      from { transform: rotateX(16deg) rotateY(-16deg) rotateZ(0deg); }
+      to { transform: rotateX(16deg) rotateY(-16deg) rotateZ(360deg); }
+    }
+
+    @media (max-width: 720px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-bottom: 26px;
+        transform: none;
+      }
+
+      .hero-copy {
+        transform: translateZ(18px);
+      }
+
+      .orbit-stage {
+        min-height: 220px;
+      }
+
+      .globe {
+        height: 190px;
+        width: 190px;
+      }
+
+      .orbit {
+        height: 220px;
+        width: 275px;
+      }
+
+      .source-grid,
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .info-card.wide {
+        grid-column: auto;
+      }
+
+      .section-heading {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      .section-note {
+        text-align: left;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <a class="wordmark" href="/" aria-label="FlightWeather home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        FlightWeather
+      </a>
+      <a class="back-link" href="/">Back to the field ↗</a>
+    </header>
+
+    <section class="hero" aria-labelledby="pageTitle">
+      <div class="hero-copy">
+        <p class="eyebrow">The people, data & little details</p>
+        <h1 id="pageTitle">Made with<br>care. In the clear.</h1>
+        <p>FlightWeather is an independent student hobby project. This page explains the public data and software behind it, and what happens when you visit.</p>
+      </div>
+      <div class="orbit-stage" aria-hidden="true">
+        <div class="orbit"></div>
+        <div class="globe"><div class="globe-grid"></div></div>
+      </div>
+      <span class="hero-index">Project notes / 01—03</span>
+    </section>
+
+    <nav class="contents" aria-label="Page contents">
+      <span>On this page</span>
+      <a href="#credits">Credits</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#cookies">Cookies</a>
+      <a href="#use">Data & safety</a>
+    </nav>
+
+    <section id="credits" aria-labelledby="creditsTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">01 / Open data & open tools</p>
+          <h2 id="creditsTitle">The people behind the picture.</h2>
+        </div>
+        <p class="section-note">A small project built on the work of public-data providers and the open-source community.</p>
+      </div>
+
+      <div class="source-grid">
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Weather / METAR · TAF · PIREP · SIGMET</span><span class="source-number">01</span></div>
+          <h3>Aviation Weather Center</h3>
+          <p>U.S. government aviation weather data used for observations, forecasts, pilot reports, and hazard bulletins.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Live aircraft observations</span><span class="source-number">02</span></div>
+          <h3>adsb.lol</h3>
+          <p>Contains information from <a href="https://www.adsb.lol/">adsb.lol</a>, made available under the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License (ODbL) 1.0</a>.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Airport locations & runways</span><span class="source-number">03</span></div>
+          <h3>OurAirports</h3>
+          <p>Open airport and runway reference data used to identify fields and their published runway geometry.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Forecast context</span><span class="source-number">04</span></div>
+          <h3>Open-Meteo</h3>
+          <p><a href="https://open-meteo.com/">Weather data by Open-Meteo</a> for wind aloft, freezing level, and daylight context, under the <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0 license</a>. Data is presented with derived summaries. This hobby project uses the free, non-commercial service.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">U.S. operational notices</span><span class="source-number">05</span></div>
+          <h3>Federal Aviation Administration</h3>
+          <p>Airport-event information is requested from the FAA NAS Status service for U.S. airports.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Map data</span><span class="source-number">06</span></div>
+          <h3>OpenStreetMap</h3>
+          <p>Map tiles © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, available under the Open Database License (ODbL). Attribution is also shown on the map.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Interface library</span><span class="source-number">07</span></div>
+          <h3>Leaflet</h3>
+          <p>Open-source JavaScript library used to display the interactive airport map.</p>
+        </article>
+        <article class="source-card">
+          <div class="source-topline"><span class="source-type">Built by students</span><span class="source-number">08</span></div>
+          <h3>Nishan.B & Joel.B</h3>
+          <p>FlightWeather is an independent high-school hobby project, built for learning and curiosity.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="privacy" aria-labelledby="privacyTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">02 / What happens when you visit</p>
+          <h2 id="privacyTitle">Privacy, without the fog.</h2>
+        </div>
+        <p class="section-note">A straightforward description of this app as currently built—not a promise about every hosting provider.</p>
+      </div>
+
+      <div class="info-grid">
+        <article class="info-card">
+          <span class="tag">What we collect</span>
+          <h3>No accounts. No profiles.</h3>
+          <p>FlightWeather does not ask you to create an account, and the app does not intentionally collect your name, email, precise location, or other profile information. Airport searches are sent to our server so it can return airport and weather data.</p>
+        </article>
+        <article class="info-card">
+          <span class="tag">How requests work</span>
+          <h3>Searches go through the server.</h3>
+          <p>When you search, the server contacts the data providers listed above. Those providers receive requests from the server rather than directly from your browser for the briefing data. The map uses proxied OpenStreetMap tiles; the Leaflet library is loaded from unpkg in your browser.</p>
+        </article>
+        <article class="info-card">
+          <span class="tag">App storage</span>
+          <h3>Temporary service caches.</h3>
+          <p>The server temporarily caches public weather, aircraft, runway, and map data to reduce repeat requests. The app does not intentionally store a profile or search history in a user account. Hosting providers may keep routine technical logs under their own policies.</p>
+        </article>
+        <article class="info-card">
+          <span class="tag">Third-party services</span>
+          <h3>Other services have their own rules.</h3>
+          <p>Cloudflare hosts the deployed app, unpkg serves the Leaflet library, and public data services provide the information described above. Their services may process technical information such as IP addresses or request metadata. Review their privacy terms for details.</p>
+        </article>
+        <article class="info-card wide">
+          <span class="tag">Questions or requests</span>
+          <h3>About privacy questions.</h3>
+          <p>This hobby project does not currently publish a privacy contact address. Please avoid sending sensitive personal information through the site.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="cookies" aria-labelledby="cookiesTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">03 / Cookies & browser storage</p>
+          <h2 id="cookiesTitle">No cookie jar in the app.</h2>
+        </div>
+      </div>
+      <div class="info-grid">
+        <article class="info-card wide">
+          <span class="tag">Current app behavior</span>
+          <h3>We do not set app cookies.</h3>
+          <p>The FlightWeather application does not currently set cookies or use local storage, session storage, advertising pixels, or analytics scripts. Your search and selected airport are used to show the current page and are not saved by the app for later visits.</p>
+          <p class="callout">Our hosting, content-delivery, map, or library providers may use or receive their own technical identifiers when serving their services. Their behavior is outside the app’s direct control and may change; consult their current privacy documentation.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="use" aria-labelledby="useTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">04 / A note about the data</p>
+          <h2 id="useTitle">Useful context, not flight advice.</h2>
+        </div>
+      </div>
+      <div class="info-grid">
+        <article class="info-card wide">
+          <span class="tag">Data freshness & safety</span>
+          <h3>Always check official sources.</h3>
+          <p>Data can be delayed, incomplete, unavailable, or interpreted incorrectly. FlightWeather is a student hobby project and is for general information only—not for flight planning, dispatch, or operational decisions. Always consult current official aviation sources and qualified professionals.</p>
+          <p class="date-stamp">Last updated: November 11, 2026</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>FlightWeather · An independent student project</span>
+      <span class="footer-note">Made with care / data with attribution</span>
+      <a href="/">Return to the airport briefing ↑</a>
+    </footer>
+  </main>
+</body>
+</html>
