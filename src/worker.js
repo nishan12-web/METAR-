@@ -17,6 +17,7 @@ const ADSB_RATE_LIMIT_FALLBACK_SECONDS = 60;
 const OPEN_METEO_CACHE_MS = 900000;
 const AIRPORT_DATA_CACHE_MS = 86400000;
 const FAA_CACHE_MS = 60000;
+const SCHEDULE_STALE_CACHE_MS = 600000;
 const OSM_TILE_FALLBACK_CACHE_SECONDS = 604800;
 const TILE_SERVER = "https://tile.openstreetmap.org";
 const MAX_TILE_ZOOM = 19;
@@ -502,6 +503,31 @@ async function getSchedule(airport, type) {
     .slice(0, 40);
 }
 
+async function getSharedSchedule(airport, cache, cacheKey) {
+  const cachedResponse = await cache.match(cacheKey);
+  const cachedSnapshot = cachedResponse ? await cachedResponse.json() : null;
+  const isFresh = cachedSnapshot && Date.now() - cachedSnapshot.fetchedAt < SCHEDULE_CACHE_MS;
+  if (isFresh) return cachedSnapshot.flights;
+
+  try {
+    const flights = await getSchedule(airport, "all");
+    const snapshot = { flights, fetchedAt: Date.now() };
+    const response = new Response(JSON.stringify(snapshot), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": `public, max-age=${SCHEDULE_STALE_CACHE_MS / 1000}`
+      }
+    });
+    await cache.put(cacheKey, response);
+    return flights;
+  } catch (error) {
+    const isWithinStaleWindow = cachedSnapshot &&
+      Date.now() - cachedSnapshot.fetchedAt < SCHEDULE_STALE_CACHE_MS;
+    if (isWithinStaleWindow) return cachedSnapshot.flights;
+    throw error;
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -580,7 +606,11 @@ export default {
         if (!airport) {
           return jsonResponse({ error: "Airport not found." }, 404);
         }
-        const flights = await getSchedule(airport, type);
+        const cacheKey = new Request(new URL(`/__cache/schedule/${normalizedIcao}`, request.url));
+        const allFlights = await getSharedSchedule(airport, caches.default, cacheKey);
+        const flights = type === "all"
+          ? allFlights
+          : allFlights.filter(flight => flight.movementType === type);
         return jsonResponse({ flights });
       } catch (err) {
         return jsonResponse({ error: err.message }, 502);

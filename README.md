@@ -21,4 +21,4 @@ Open-Meteo's free API is for non-commercial use only; commercial use requires an
 
 `npm start` runs the Cloudflare Worker locally. `node server.js` runs the standalone Node server. They intentionally keep parallel request logic because the two environments handle HTTP requests, static assets, and caching differently; update both when changing provider behavior. Run `npm test` for the Node server's HTTP regression checks.
 
-The field-conditions summary shows both customary and metric values together. The arrivals, departures, and all-flights tabs use one cached ADS-B snapshot per airport, which avoids duplicate provider requests when switching views.
+The field-conditions summary shows both customary and metric values together. The arrivals, departures, and all-flights tabs use one cached ADS-B snapshot per airport. Cloudflare also keeps a shared edge copy for two minutes and retains it for up to ten minutes to serve during temporary ADS-B rate limits.
