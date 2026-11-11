@@ -19,6 +19,7 @@ const ADSB_RADIUS_NM = 25;
 const SCHEDULE_CACHE_MS = 120000;
 const AWC_CACHE_MS = 60000;
 const ADSB_CACHE_MS = 15000;
+const ADSB_RATE_LIMIT_FALLBACK_SECONDS = 60;
 const OPEN_METEO_CACHE_MS = 900000;
 const AIRPORT_DATA_CACHE_MS = 86400000;
 const FAA_CACHE_MS = 60000;
@@ -32,6 +33,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 let airportCache = null;
 let airportCacheTimestamp = 0;
 const scheduleCache = new Map();
+const trafficRateLimits = new Map();
 const providerCache = new Map();
 
 async function getCached(cacheKey, ttl, load) {
@@ -60,7 +62,12 @@ function providerHeaders() {
 async function fetchProviderJson(url, label) {
   const response = await fetch(url, { headers: providerHeaders() });
   if (response.status === 204 || response.status === 404) return null;
-  if (!response.ok) throw new Error(`${label} data unavailable (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(`${label} data unavailable (${response.status}).`);
+    error.status = response.status;
+    error.retryAfter = response.headers.get("retry-after");
+    throw error;
+  }
   return response.json();
 }
 
@@ -296,11 +303,33 @@ async function getWeatherAlerts(airport) {
 }
 
 async function getTraffic(airport) {
-  return getCached(`traffic:${airport.icao}`, ADSB_CACHE_MS, async () => {
-    const url = `${ADSB_API}/v2/point/${airport.lat}/${airport.lon}/${ADSB_RADIUS_NM}`;
-    const payload = await fetchProviderJson(url, "Live aircraft");
-    return { ac: Array.isArray(payload?.ac) ? payload.ac.slice(0, 200) : [] };
-  });
+  const retryUntil = trafficRateLimits.get(airport.icao);
+  if (retryUntil > Date.now()) {
+    const seconds = Math.ceil((retryUntil - Date.now()) / 1000);
+    throw new Error(`Live aircraft feed is rate-limited. Try again in about ${seconds} seconds.`);
+  }
+  trafficRateLimits.delete(airport.icao);
+
+  try {
+    return await getCached(`traffic:${airport.icao}`, ADSB_CACHE_MS, async () => {
+      const url = `${ADSB_API}/v2/point/${airport.lat}/${airport.lon}/${ADSB_RADIUS_NM}`;
+      const payload = await fetchProviderJson(url, "Live aircraft");
+      return { ac: Array.isArray(payload?.ac) ? payload.ac.slice(0, 200) : [] };
+    });
+  } catch (error) {
+    if (error.status === 429) {
+      const retryAfter = Number(error.retryAfter);
+      const retryAt = Date.parse(error.retryAfter);
+      const seconds = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter
+        : Number.isFinite(retryAt) && retryAt > Date.now()
+          ? Math.ceil((retryAt - Date.now()) / 1000)
+          : ADSB_RATE_LIMIT_FALLBACK_SECONDS;
+      trafficRateLimits.set(airport.icao, Date.now() + seconds * 1000);
+      error.message = `Live aircraft feed is rate-limited. Try again in about ${seconds} seconds.`;
+    }
+    throw error;
+  }
 }
 
 async function getWindsAloft(airport) {
@@ -361,7 +390,6 @@ async function getBriefing(airport) {
     taf: () => getTaf(airport.icao),
     pireps: () => getPireps(airport.icao),
     weatherAlerts: () => getWeatherAlerts(airport),
-    traffic: () => getTraffic(airport),
     windsAloft: () => getWindsAloft(airport),
     runways: () => getAirportRunways(airport.icao),
     faaStatus: () => getFaaStatus(airport.icao)
@@ -430,56 +458,58 @@ function classifyAdsbMovement(airport, aircraft) {
 }
 
 async function getSchedule(airport, type) {
-  const cacheKey = `${airport.icao}:${type}`;
+  const cacheKey = airport.icao;
   const cached = scheduleCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < SCHEDULE_CACHE_MS) return cached.flights;
+  let flights = cached?.flights;
+  if (!cached || Date.now() - cached.timestamp >= SCHEDULE_CACHE_MS) {
+    try {
+      const payload = await getTraffic(airport);
+      flights = (Array.isArray(payload.ac) ? payload.ac : [])
+        .map(aircraft => {
+          const movementType = classifyAdsbMovement(airport, aircraft);
+          if (!movementType) return null;
 
-  const payload = await getTraffic(airport);
-  const flights = Array.isArray(payload.ac) ? payload.ac : [];
-  const normalizedFlights = flights
-    .map(aircraft => {
-      const callsign = String(aircraft.flight || aircraft.r || aircraft.hex || "").trim() || "Unknown flight";
-      const movementType = classifyAdsbMovement(airport, aircraft);
-      if (!movementType || movementType !== type) return null;
+          const callsign = String(aircraft.flight || aircraft.r || aircraft.hex || "").trim() || "Unknown flight";
+          const observedAt = Number.isFinite(Number(aircraft.seen))
+            ? new Date(Date.now() - Number(aircraft.seen) * 1000).toISOString()
+            : null;
+          const airlineCode = callsign.match(/^[A-Z]{2,3}/)?.[0] || "";
+          const station = {
+            iataCode: airport.iata || "",
+            icaoCode: airport.icao || "",
+            name: airport.name || "",
+            city: airport.city || ""
+          };
 
-      const observedAt = Number.isFinite(Number(aircraft.seen))
-        ? new Date(Date.now() - Number(aircraft.seen) * 1000).toISOString()
-        : null;
-      const airlineCode = callsign.match(/^[A-Z]{2,3}/)?.[0] || "";
+          return {
+            flight: {
+              number: callsign,
+              callsign,
+              iataNumber: callsign,
+              icaoNumber: callsign,
+              icao24: aircraft.hex || ""
+            },
+            airline: { name: "", code: airlineCode },
+            departure: station,
+            arrival: station,
+            status: `recent ${movementType} · ADSB.lol`,
+            movementType,
+            observedAt,
+            liveSource: "ADSB.lol"
+          };
+        })
+        .filter(Boolean)
+        .sort((first, second) => new Date(second.observedAt || 0) - new Date(first.observedAt || 0));
+      scheduleCache.set(cacheKey, { timestamp: Date.now(), flights });
+    } catch (error) {
+      if (!cached || Date.now() - cached.timestamp >= SCHEDULE_CACHE_MS * 5) throw error;
+      flights = cached.flights;
+    }
+  }
 
-      return {
-        flight: {
-          number: callsign,
-          callsign,
-          iataNumber: callsign,
-          icaoNumber: callsign,
-          icao24: aircraft.hex || ""
-        },
-        airline: { name: "", code: airlineCode },
-        departure: {
-          iataCode: airport.iata || "",
-          icaoCode: airport.icao || "",
-          name: airport.name || "",
-          city: airport.city || ""
-        },
-        arrival: {
-          iataCode: airport.iata || "",
-          icaoCode: airport.icao || "",
-          name: airport.name || "",
-          city: airport.city || ""
-        },
-        status: type === "arrival" ? "recent arrival · ADSB.lol" : "recent departure · ADSB.lol",
-        movementType: type,
-        observedAt,
-        liveSource: "ADSB.lol"
-      };
-    })
-    .filter(Boolean)
-    .sort((first, second) => new Date(second.observedAt || 0) - new Date(first.observedAt || 0))
+  return flights
+    .filter(flight => type === "all" || flight.movementType === type)
     .slice(0, 40);
-
-  scheduleCache.set(cacheKey, { timestamp: Date.now(), flights: normalizedFlights });
-  return normalizedFlights;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -565,7 +595,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname.startsWith("/api/schedule/")) {
     const [, , , icaoCode, type] = url.pathname.split("/");
     const normalizedIcao = cleanIcao(icaoCode);
-    if (!normalizedIcao || !["arrival", "departure"].includes(type)) {
+    if (!normalizedIcao || !["all", "arrival", "departure"].includes(type)) {
       send(res, 400, JSON.stringify({ error: "Invalid schedule request." }), "application/json; charset=utf-8");
       return;
     }

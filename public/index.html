@@ -481,8 +481,10 @@
     .metar-item .value {
       color: var(--ink);
       font-family: var(--mono);
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 600;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
     }
 
     .metar-item .units {
@@ -884,12 +886,12 @@
           <div class="metar-grid">
             <div class="metar-item">
               <label>Temperature</label>
-              <div class="value"><span id="temp">--</span><span class="units">°C</span></div>
+              <div class="value"><span id="temp">--</span></div>
               <p class="metric-context" id="tempContext">Air temperature at the field.</p>
             </div>
             <div class="metar-item">
               <label>Dew Point</label>
-              <div class="value"><span id="dewpoint">--</span><span class="units">°C</span></div>
+              <div class="value"><span id="dewpoint">--</span></div>
               <p class="metric-context" id="dewpointContext">Moisture level in the air.</p>
             </div>
             <div class="metar-item">
@@ -1009,7 +1011,12 @@
     let activeSuggestion = -1;
     let currentSuggestions = [];
     let scheduleIcao = "";
+    let scheduleFlights = null;
+    let scheduleFlightsIcao = "";
+    let scheduleRequestPromise = null;
+    let scheduleRequestIcao = "";
     let searchRequest = 0;
+    let currentWeather = null;
     const quickPickButtons = [...document.querySelectorAll(".quick-pick")];
 
     // Format provider timestamps using the visitor's local date and time settings.
@@ -1044,6 +1051,7 @@
     // Use textContent for provider values so they cannot be interpreted as HTML.
     function renderSchedule(flights, type) {
       scheduleList.replaceChildren();
+      scheduleList.className = "schedule-list";
       if (!flights.length) {
         const message = document.createElement("p");
         message.className = "schedule-message";
@@ -1082,31 +1090,51 @@
       });
     }
 
-    // Ask the server for movements and redraw the list. The combined view requests
-    // arrivals and departures in parallel, then sorts them by the observation time.
+    // Load one combined movement feed and switch tabs locally.
     async function loadSchedule(type) {
       if (!scheduleIcao) return;
-        scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === scheduleTabs[type === "schedule" ? 0 : type === "arrival" ? 1 : 2]));
+      const requestedIcao = scheduleIcao;
+      scheduleTabs.forEach(tab => tab.classList.toggle("active", tab === scheduleTabs[type === "schedule" ? 0 : type === "arrival" ? 1 : 2]));
 
       scheduleList.innerHTML = "<p class=\"schedule-message\">Loading live schedule...</p>";
       try {
-        const movementTypes = type === "schedule" ? ["arrival", "departure"] : [type];
-        const results = await Promise.all(movementTypes.map(async movementType => {
-          const response = await fetch(`/api/schedule/${scheduleIcao}/${movementType}`);
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Could not load flight movements.");
-          return (Array.isArray(data.flights) ? data.flights : []).map(flight => ({ ...flight, movementType }));
-        }));
-        const flights = results.flat().sort((first, second) =>
-          new Date(second.observedAt || 0) - new Date(first.observedAt || 0)
-        );
+        if (scheduleFlightsIcao !== requestedIcao || !scheduleFlights) {
+          if (!scheduleRequestPromise || scheduleRequestIcao !== requestedIcao) {
+            scheduleRequestIcao = requestedIcao;
+            scheduleRequestPromise = (async () => {
+              const response = await fetch(`/api/schedule/${requestedIcao}/all`);
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || "Could not load flight movements.");
+              return Array.isArray(data.flights) ? data.flights : [];
+            })();
+          }
+
+          scheduleFlights = await scheduleRequestPromise;
+          scheduleFlightsIcao = requestedIcao;
+        }
+        if (scheduleIcao !== requestedIcao) return;
+
+        if (scheduleRequestIcao === requestedIcao) {
+          scheduleRequestPromise = null;
+          scheduleRequestIcao = "";
+        }
+        const flights = type === "schedule"
+          ? scheduleFlights
+          : scheduleFlights.filter(flight => flight.movementType === type);
         scheduleSubtitle.textContent = type === "schedule"
           ? `${flights.length} recent movements · last 2 hours · ADSB.lol`
           : `${flights.length} recent ${type}s · last 2 hours · ADSB.lol`;
         renderSchedule(flights, type);
       } catch (err) {
+        if (scheduleRequestIcao === requestedIcao) {
+          scheduleRequestPromise = null;
+          scheduleRequestIcao = "";
+        }
+        if (scheduleIcao !== requestedIcao) return;
         scheduleSubtitle.textContent = "ADSB.lol movement data unavailable";
-        scheduleList.textContent = err.message;
+        scheduleList.textContent = err.message.includes("rate-limited")
+          ? `${err.message} Previously loaded movements will remain available when possible.`
+          : err.message;
         scheduleList.className = "schedule-list schedule-message";
       }
     }
@@ -1217,8 +1245,8 @@
       // MVFR: ceiling 1000-2999 ft, visibility 3-4 sm
       // IFR: ceiling 500-999 ft, visibility 1-2 sm
       // LIFR: ceiling < 500 ft, visibility < 1 sm
-      const vis = visibility || 10;
-      const cig = ceiling || 5000;
+      const vis = Number.isFinite(visibility) ? visibility : 10;
+      const cig = Number.isFinite(ceiling) ? ceiling : 5000;
       
       if (cig >= 3000 && vis >= 5) return { category: "VFR", class: "vfr", color: "#00cc00" };
       if (cig >= 1000 && vis >= 3) return { category: "MVFR", class: "mvfr", color: "#0066ff" };
@@ -1232,16 +1260,30 @@
       return Number.isFinite(number) ? number : null;
     }
 
-    // Prefer structured observation fields where available, then use the readable text
-    // as a fallback; the raw METAR itself remains available in the full-report view.
+    function parseVisibilitySm(value) {
+      if (value === null || value === undefined) return null;
+      const text = String(value).replace(/\s*(SM|MILES?)$/i, "").trim();
+      const mixedFraction = text.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+      if (mixedFraction) {
+        const miles = Number(mixedFraction[1]) + Number(mixedFraction[2]) / Number(mixedFraction[3]);
+        return numericValue(miles);
+      }
+
+      const fraction = text.match(/^(\d+)\/(\d+)$/);
+      if (fraction) return numericValue(Number(fraction[1]) / Number(fraction[2]));
+      return numericValue(Number.parseFloat(text));
+    }
+
     function parseMetarData(decodedText, observation = {}) {
       const data = {
-        temp: "--",
-        dewpoint: "--",
-        wind: "--",
-        visibility: "--",
-        ceiling: "--",
-        altimeter: "--"
+        tempC: null,
+        dewpointC: null,
+        windDirection: null,
+        windSpeedKt: null,
+        windGustKt: null,
+        visibilitySm: null,
+        ceilingFt: null,
+        altimeterInHg: null
       };
 
       if (!decodedText) return data;
@@ -1249,26 +1291,25 @@
       // Parse Temperature: "Temperature: 35C"
       const tempMatch = decodedText.match(/Temperature:\s*([-\d.]+)C/);
       if (tempMatch) {
-        data.temp = tempMatch[1];
+        data.tempC = numericValue(tempMatch[1]);
       }
 
       // Parse Dewpoint: "Dewpoint: 20.6C"
       const dewMatch = decodedText.match(/Dewpoint:\s*([-\d.]+)C/);
       if (dewMatch) {
-        data.dewpoint = dewMatch[1];
+        data.dewpointC = numericValue(dewMatch[1]);
       }
 
       // Parse Wind from "Winds: from 260 degrees at 17 knots"
       const windMatch = decodedText.match(/Winds:\s*from\s+([\d]+)\s*degrees\s*at\s+([\d]+)\s*knots/);
       if (windMatch) {
-        data.wind = `${windMatch[1]}° @ ${windMatch[2]} kt`;
+        data.windDirection = numericValue(windMatch[1]);
+        data.windSpeedKt = numericValue(windMatch[2]);
       }
 
       // Parse Visibility: "10+ sm" or "5 sm" - extract the number
-      const visMatch = decodedText.match(/Visibility:\s*([\d.]+)/);
-      if (visMatch) {
-        data.visibility = visMatch[1] + " SM";
-      }
+      const visMatch = decodedText.match(/Visibility:\s*([^\n]+)/);
+      if (visMatch) data.visibilitySm = parseVisibilitySm(visMatch[1]);
 
       // Parse Ceiling from the cloud codes in the raw METAR: OVC055 or BKN055
       let ceilingMatch = decodedText.match(/METAR[^\n]+(OVC|BKN)\s*(\d+)/);
@@ -1277,59 +1318,105 @@
         ceilingMatch = decodedText.match(/METAR[^\n]+(SCT|FEW)\s*(\d+)/);
       }
       if (ceilingMatch) {
-        const ceilingHundreds = ceilingMatch[2];
-        data.ceiling = (parseInt(ceilingHundreds) * 100) + " ft";
+        data.ceilingFt = numericValue(ceilingMatch[2]) * 100;
       }
 
       // Parse Altimeter: "29.67 inches Hg"
       const altMatch = decodedText.match(/Altimeter:\s*([\d.]+)\s*inches/);
       if (altMatch) {
-        data.altimeter = altMatch[1] + " inHg";
+        data.altimeterInHg = numericValue(altMatch[1]);
       }
 
-      if (numericValue(observation.temp) !== null) data.temp = String(observation.temp);
-      if (numericValue(observation.dewp) !== null) data.dewpoint = String(observation.dewp);
+      if (numericValue(observation.temp) !== null) data.tempC = numericValue(observation.temp);
+      if (numericValue(observation.dewp) !== null) data.dewpointC = numericValue(observation.dewp);
       if (numericValue(observation.wdir) !== null && numericValue(observation.wspd) !== null) {
-        data.wind = `${observation.wdir}° @ ${observation.wspd} kt`;
-        if (numericValue(observation.wgst) !== null && Number(observation.wgst) > Number(observation.wspd)) {
-          data.wind += ` G${observation.wgst}`;
-        }
+        data.windDirection = numericValue(observation.wdir);
+        data.windSpeedKt = numericValue(observation.wspd);
+        data.windGustKt = numericValue(observation.wgst);
       }
-      if (observation.visib) {
-        data.visibility = `${String(observation.visib).replace(/\\s*(SM|MILES?)$/i, "")} SM`;
+      if (observation.visib !== null && observation.visib !== undefined) {
+        data.visibilitySm = parseVisibilitySm(observation.visib);
       }
       const observedCeiling = Array.isArray(observation.clouds)
         ? observation.clouds.find(cloud =>
           ["BKN", "OVC", "VV"].includes(String(cloud.cover || "").toUpperCase()) && numericValue(cloud.base) !== null
         )
         : null;
-      if (observedCeiling) data.ceiling = `${observedCeiling.base} ft`;
-      if (numericValue(observation.altim) !== null) data.altimeter = `${observation.altim} inHg`;
+      if (observedCeiling) data.ceilingFt = numericValue(observedCeiling.base);
+      if (numericValue(observation.altim) !== null) data.altimeterInHg = numericValue(observation.altim);
 
       return data;
+    }
+
+    function formatTemperature(celsius) {
+      if (celsius === null) return "--";
+      const fahrenheit = Math.round((celsius * 9) / 5 + 32);
+      return `${Number(celsius.toFixed(1))}°C / ${fahrenheit}°F`;
+    }
+
+    function formatWind(metarData) {
+      if (metarData.windSpeedKt === null) return "--";
+      const speedKt = Math.round(metarData.windSpeedKt);
+      const speedMph = Math.round(metarData.windSpeedKt * 1.15078);
+      const speedKph = Math.round(metarData.windSpeedKt * 1.852);
+      const direction = metarData.windDirection === null ? "" : `${metarData.windDirection}° @ `;
+      const gust = metarData.windGustKt > metarData.windSpeedKt
+        ? ` G${Math.round(metarData.windGustKt)}kt / G${Math.round(metarData.windGustKt * 1.15078)}mph / G${Math.round(metarData.windGustKt * 1.852)}km/h`
+        : "";
+      return `${direction}${speedKt}kt / ${speedMph}mph / ${speedKph}km/h${gust}`;
+    }
+
+    function formatVisibility(statuteMiles) {
+      if (statuteMiles === null) return "--";
+      return `${statuteMiles}mi / ${Number((statuteMiles * 1.60934).toFixed(1))}km`;
+    }
+
+    function formatCeiling(feet) {
+      if (feet === null) return "--";
+      return `${Math.round(feet)}ft / ${Math.round(feet * 0.3048)}m`;
+    }
+
+    function formatPressure(inHg) {
+      if (inHg === null) return "--";
+      return `${inHg.toFixed(2)}inHg / ${Math.round(inHg * 33.8639)}hPa`;
+    }
+
+    function renderWeatherValues(metarData) {
+      temp.textContent = formatTemperature(metarData.tempC);
+      dewpoint.textContent = formatTemperature(metarData.dewpointC);
+      wind.textContent = formatWind(metarData);
+      visibility.textContent = formatVisibility(metarData.visibilitySm);
+      ceiling.textContent = formatCeiling(metarData.ceilingFt);
+      altimeter.textContent = formatPressure(metarData.altimeterInHg);
+
+      const category = determineFlightCategory(metarData.ceilingFt, metarData.visibilitySm);
+      flightCategory.textContent = category.category;
+      flightCategory.className = `flight-category ${category.class}`;
     }
 
     // Build a short plain-language summary from the weather data that was actually received.
     // This uses fixed rules and templates; it does not send airport data to an AI service.
     function generateFieldDispatch(metarData, airport, briefing) {
       const category = determineFlightCategory(
-        Number.parseInt(metarData.ceiling, 10),
-        Number.parseFloat(metarData.visibility)
+        metarData.ceilingFt,
+        metarData.visibilitySm
       ).category;
       const airportName = airport.name || airport.icao;
       const location = airport.city ? `${airport.name}, ${airport.city}` : airportName;
-      const windSummary = metarData.wind === "--" ? "wind is not reported" : `surface wind is ${metarData.wind}`;
-      const visibilitySummary = metarData.visibility === "--" ? "visibility is not reported" : `visibility is ${metarData.visibility}`;
+      const currentWind = formatWind(metarData);
+      const currentVisibility = formatVisibility(metarData.visibilitySm);
+      const windSummary = currentWind === "--" ? "wind is not reported" : `surface wind is ${currentWind}`;
+      const visibilitySummary = currentVisibility === "--" ? "visibility is not reported" : `visibility is ${currentVisibility}`;
       const outlook = [];
 
-      const temperature = Number(metarData.temp);
-      const dewpointValue = Number(metarData.dewpoint);
-      if (Number.isFinite(temperature) && Number.isFinite(dewpointValue)) {
-        const spread = temperature - dewpointValue;
-        if (spread <= 2.5) {
-          outlook.push(`the ${spread.toFixed(1)} °C temperature-dewpoint spread is tight, so low cloud or fog may form as the air cools`);
+      if (metarData.tempC !== null && metarData.dewpointC !== null) {
+        const spreadC = metarData.tempC - metarData.dewpointC;
+        const spreadF = spreadC * 9 / 5;
+        const tightSpread = spreadC <= 2.5;
+        if (tightSpread) {
+          outlook.push(`the temperature-dewpoint spread is tight (${spreadC.toFixed(1)} °C / ${spreadF.toFixed(1)} °F), so low cloud or fog may form as the air cools`);
         } else {
-          outlook.push(`the ${spread.toFixed(1)} °C temperature-dewpoint spread suggests lower immediate fog potential`);
+          outlook.push(`the temperature-dewpoint spread is ${spreadC.toFixed(1)} °C / ${spreadF.toFixed(1)} °F, suggesting lower immediate fog potential`);
         }
       }
 
@@ -1359,7 +1446,9 @@
       const windSpeed = hourly?.wind_speed_80m?.[0];
       const windDirection = hourly?.wind_direction_80m?.[0];
       if (Number.isFinite(Number(windSpeed)) && Number.isFinite(Number(windDirection))) {
-        outlook.push(`the first 80 m wind forecast is ${Math.round(Number(windSpeed))} km/h from ${Math.round(Number(windDirection))}°`);
+        const speedKph = Number(windSpeed);
+        const speedMph = Math.round(speedKph / 1.60934);
+        outlook.push(`the first 80 m wind forecast is ${speedMph} mph / ${Math.round(speedKph)} km/h from ${Math.round(Number(windDirection))}°`);
       }
       if (Array.isArray(briefing.weatherAlerts) && briefing.weatherAlerts.length > 0) {
         outlook.push(`${briefing.weatherAlerts.length} active Aviation Weather Center hazard bulletin${briefing.weatherAlerts.length === 1 ? " applies" : "s apply"} to the airport area`);
@@ -1377,51 +1466,48 @@
     }
 
     function updateMetricContext(metarData) {
-      const temperature = Number(metarData.temp);
-      const dewpointValue = Number(metarData.dewpoint);
-      const spread = temperature - dewpointValue;
-      tempContext.textContent = Number.isFinite(temperature)
-        ? `Air temperature at the field${temperature <= 0 ? " · freezing conditions" : ""}.`
+      const spreadC = metarData.tempC - metarData.dewpointC;
+      const hasSpread = metarData.tempC !== null && metarData.dewpointC !== null;
+      tempContext.textContent = metarData.tempC !== null
+        ? `Air temperature shown in Celsius and Fahrenheit${metarData.tempC <= 0 ? " · freezing conditions" : ""}.`
         : "Air temperature at the field.";
-      dewpointContext.textContent = Number.isFinite(spread)
-        ? `Spread ${spread.toFixed(1)} °C · ${spread <= 2.5 ? "fog or low cloud can form readily" : "lower fog potential for now"}.`
+      dewpointContext.textContent = hasSpread
+        ? `Spread ${spreadC.toFixed(1)} °C / ${(spreadC * 9 / 5).toFixed(1)} °F · ${spreadC <= 2.5 ? "fog or low cloud can form readily" : "lower fog potential for now"}.`
         : "Moisture level in the air; a close temperature spread favors fog.";
-      windContext.textContent = metarData.wind === "--"
+      windContext.textContent = metarData.windSpeedKt === null
         ? "Surface wind was not included in this report."
-        : "Direction is measured clockwise from north; gusts can affect handling.";
+        : "Speed is shown in knots, miles per hour, and kilometres per hour; direction is clockwise from north.";
 
-      const visibilityValue = Number.parseFloat(metarData.visibility);
-      visibilityContext.textContent = Number.isFinite(visibilityValue)
-        ? `${visibilityValue >= 5 ? "Good visual range" : "Reduced visual range"} for pilots and drivers.`
+      visibilityContext.textContent = metarData.visibilitySm !== null
+        ? `${metarData.visibilitySm >= 5 ? "Good visual range" : "Reduced visual range"} for pilots and drivers.`
         : "Reported prevailing visibility near the airport.";
 
-      const ceilingValue = Number.parseInt(metarData.ceiling, 10);
-      ceilingContext.textContent = Number.isFinite(ceilingValue)
-        ? `${ceilingValue < 1000 ? "Low cloud base" : "Cloud-base height"} above the field.`
+      ceilingContext.textContent = metarData.ceilingFt !== null
+        ? `${metarData.ceilingFt < 1000 ? "Low cloud base" : "Cloud-base height"} above the field, shown in feet and metres.`
         : "No broken or overcast ceiling reported.";
 
-      const pressure = Number.parseFloat(metarData.altimeter);
-      altimeterContext.textContent = Number.isFinite(pressure)
-        ? `${pressure < 29.92 ? "Below" : "At or above"} standard pressure · used to correct indicated altitude.`
+      altimeterContext.textContent = metarData.altimeterInHg !== null
+        ? `${metarData.altimeterInHg < 29.92 ? "Below" : "At or above"} standard pressure · shown in inHg and hPa.`
         : "Pressure setting used to correct indicated altitude.";
     }
 
     function showMetarSummary(decodedText, airport, briefing) {
-      const metarData = parseMetarData(decodedText, briefing.metar?.observation);
-      
-      temp.textContent = metarData.temp;
-      dewpoint.textContent = metarData.dewpoint;
-      wind.textContent = metarData.wind;
-      visibility.textContent = metarData.visibility;
-      ceiling.textContent = metarData.ceiling;
-      altimeter.textContent = metarData.altimeter;
+      currentWeather = {
+        metarData: parseMetarData(decodedText, briefing.metar?.observation),
+        airport,
+        briefing
+      };
+      renderWeatherSummary();
+      metarSummaryCard.hidden = false;
+      toggleMetarBtn.hidden = false;
+      showingSummary = true;
+      toggleMetarBtn.textContent = "View Full METAR";
+    }
 
-      const ceilingNum = parseInt(metarData.ceiling) || 5000;
-      const visNum = parseFloat(metarData.visibility) || 10;
-      const category = determineFlightCategory(ceilingNum, visNum);
-
-      flightCategory.textContent = category.category;
-      flightCategory.className = "flight-category " + category.class;
+    function renderWeatherSummary() {
+      if (!currentWeather) return;
+      const { metarData, airport, briefing } = currentWeather;
+      renderWeatherValues(metarData);
       updateMetricContext(metarData);
       fieldDispatch.replaceChildren();
       generateFieldDispatch(metarData, airport, briefing).forEach(text => {
@@ -1445,11 +1531,6 @@
         attribution.append(provider, separator, license);
         fieldDispatch.append(attribution);
       }
-
-      metarSummaryCard.hidden = false;
-      toggleMetarBtn.hidden = false;
-      showingSummary = true;
-      toggleMetarBtn.textContent = "View Full METAR";
     }
 
     // Ignore late responses from earlier searches so they cannot overwrite the latest result.
@@ -1473,6 +1554,8 @@
         const airport = airportData.airport;
         showAirport(airport);
         scheduleIcao = airport.icao;
+        scheduleFlights = null;
+        scheduleFlightsIcao = "";
         scheduleCard.hidden = false;
         scheduleSubtitle.textContent = airport.iata === "--"
           ? "Recent ADS-B movements"
